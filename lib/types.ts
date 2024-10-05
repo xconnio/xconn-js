@@ -1,5 +1,7 @@
 import {Serializer, Message, SessionDetails} from "wampproto";
 
+import {ApplicationError} from "./exception";
+
 
 export abstract class IBaseSession {
     id(): number {
@@ -129,5 +131,29 @@ export class Result {
         this.args = args || [];
         this.kwargs = kwargs || {};
         this.details = details || {};
+    }
+}
+
+export class Registration {
+    constructor(public readonly registrationID: number) {
+    }
+}
+
+export class RegisterRequest {
+    constructor(
+        public readonly promise: {
+            resolve: (value: Registration) => void,
+            reject: (reason: ApplicationError) => void
+        },
+        public readonly endpoint: (invocation: Invocation) => Result) {
+    }
+}
+
+export class Invocation {
+    constructor(
+        public readonly args: any[] = [],
+        public readonly kwargs: { [key: string]: any } = {},
+        public readonly details: { [key: string]: any } = {}
+    ) {
     }
 }
