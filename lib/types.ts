@@ -119,3 +119,15 @@ export class BaseSession extends IBaseSession {
         this._ws.close();
     }
 }
+
+export class Result {
+    args: any[];
+    kwargs: { [key: string]: any };
+    details: { [key: string]: any };
+
+    constructor(args?: any[], kwargs?: { [key: string]: any }, details?: { [key: string]: any }) {
+        this.args = args || [];
+        this.kwargs = kwargs || {};
+        this.details = details || {};
+    }
+}

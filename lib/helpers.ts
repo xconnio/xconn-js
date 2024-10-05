@@ -1,4 +1,4 @@
-import {JSONSerializer, CBORSerializer, MsgPackSerializer, Serializer} from "wampproto";
+import {JSONSerializer, CBORSerializer, MsgPackSerializer, Serializer, Error as ErrorMsg} from "wampproto";
 
 const jsonSubProtocol = "wamp.2.json";
 const cborSubProtocol = "wamp.2.cbor";
@@ -15,4 +15,19 @@ export function getSubProtocol(serializer: Serializer): string {
     } else {
         throw new Error("invalid serializer");
     }
+}
+
+export function wampErrorString(err: ErrorMsg): string {
+    let errStr = err.uri;
+    if (err.args && err.args.length > 0) {
+        const args = err.args.map((arg: any) => arg.toString()).join(", ");
+        errStr += `: ${args}`;
+    }
+    if (err.kwargs && Object.keys(err.kwargs).length > 0) {
+        const kwargs = Object.entries(err.kwargs)
+            .map(([key, value]) => `${key}=${value}`)
+            .join(", ");
+        errStr += `: ${kwargs}`;
+    }
+    return errStr;
 }
