@@ -12,7 +12,8 @@
   "author": "Mahad Munir <mahad@xconn.io>",
   "license": "MIT",
   "dependencies": {
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "wampproto": "github:xconnio/wampproto-ts"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.24.7",
