@@ -157,3 +157,11 @@ export class Invocation {
     ) {
     }
 }
+
+export class UnregisterRequest {
+    constructor(
+        public readonly promise: { resolve: () => void; reject: (reason: ApplicationError) => void },
+        public readonly registrationID: number
+    ) {
+    }
+}

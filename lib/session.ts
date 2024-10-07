@@ -8,12 +8,14 @@ import {
     Register, RegisterFields,
     Registered,
     Yield, YieldFields,
-    Invocation as InvocationMsg
+    Invocation as InvocationMsg,
+    Unregister, UnregisterFields,
+    Unregistered
 } from "wampproto";
 
 import {wampErrorString} from "./helpers";
 import {ApplicationError, ProtocolError} from "./exception";
-import {IBaseSession, Result, Invocation, RegisterRequest, Registration} from "./types";
+import {IBaseSession, Result, Invocation, RegisterRequest, Registration, UnregisterRequest} from "./types";
 
 
 export class Session {
@@ -27,6 +29,7 @@ export class Session {
     }> = new Map();
     private _registerRequests: Map<number, RegisterRequest> = new Map();
     private _registrations: Map<number, (invocation: Invocation) => Result> = new Map();
+    private _unregisterRequests: Map<number, UnregisterRequest> = new Map();
 
     constructor(baseSession: IBaseSession) {
         this._baseSession = baseSession;
@@ -67,6 +70,13 @@ export class Session {
                     new YieldFields(message.requestID, result.args, result.kwargs, result.details)
                 )));
             }
+        } else if (message instanceof Unregistered) {
+            const request = this._unregisterRequests.get(message.requestID);
+            if (request) {
+                this._registrations.delete(request.registrationID);
+                this._unregisterRequests.delete(message.requestID);
+                request.promise.resolve();
+            }
         } else if (message instanceof ErrorMsg) {
             switch (message.messageType) {
                 case Call.TYPE: {
@@ -74,7 +84,6 @@ export class Session {
                     promiseHandler.reject(
                         new ApplicationError(message.uri, {args: message.args, kwargs: message.kwargs})
                     );
-
                     this._callRequests.delete(message.requestID);
                     break;
                 }
@@ -84,6 +93,14 @@ export class Session {
                         new ApplicationError(message.uri, {args: message.args, kwargs: message.kwargs})
                     );
                     this._registerRequests.delete(message.requestID);
+                    break;
+                }
+                case Unregister.TYPE: {
+                    const unregisterRequest = this._unregisterRequests.get(message.requestID);
+                    unregisterRequest.promise.reject(
+                        new ApplicationError(message.uri, {args: message.args, kwargs: message.kwargs})
+                    );
+                    this._unregisterRequests.delete(message.requestID);
                     break;
                 }
                 default:
@@ -139,6 +156,25 @@ export class Session {
         const request = new RegisterRequest(promiseHandler, endpoint);
         this._registerRequests.set(register.requestID, request);
         this._baseSession.send(this._wampSession.sendMessage(register));
+
+        return promise;
+    }
+
+    async unregister(reg: Registration): Promise<void> {
+        const unregister = new Unregister(new UnregisterFields(this._nextID, reg.registrationID));
+        let promiseHandler: {
+            resolve: () => void;
+            reject: (reason: ApplicationError) => void
+        };
+
+        const promise = new Promise<void>((resolve, reject) => {
+            promiseHandler = {resolve, reject};
+        });
+
+        const request = new UnregisterRequest(promiseHandler, reg.registrationID);
+        this._unregisterRequests.set(unregister.requestID, request);
+        this._baseSession.send(this._wampSession.sendMessage(unregister));
+
         return promise;
     }
 }
