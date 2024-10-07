@@ -10,7 +10,9 @@ import {
     Yield, YieldFields,
     Invocation as InvocationMsg,
     Unregister, UnregisterFields,
-    Unregistered
+    Unregistered,
+    Publish, PublishFields,
+    Published
 } from "wampproto";
 
 import {wampErrorString} from "./helpers";
@@ -30,6 +32,10 @@ export class Session {
     private _registerRequests: Map<number, RegisterRequest> = new Map();
     private _registrations: Map<number, (invocation: Invocation) => Result> = new Map();
     private _unregisterRequests: Map<number, UnregisterRequest> = new Map();
+    private _publishRequests: Map<number, {
+        resolve: () => void,
+        reject: (reason: ApplicationError) => void
+    }> = new Map();
 
     constructor(baseSession: IBaseSession) {
         this._baseSession = baseSession;
@@ -77,6 +83,12 @@ export class Session {
                 this._unregisterRequests.delete(message.requestID);
                 request.promise.resolve();
             }
+        } else if (message instanceof Published) {
+            const request = this._publishRequests.get(message.requestID);
+            if (request) {
+                request.resolve();
+                this._publishRequests.delete(message.requestID);
+            }
         } else if (message instanceof ErrorMsg) {
             switch (message.messageType) {
                 case Call.TYPE: {
@@ -101,6 +113,14 @@ export class Session {
                         new ApplicationError(message.uri, {args: message.args, kwargs: message.kwargs})
                     );
                     this._unregisterRequests.delete(message.requestID);
+                    break;
+                }
+                case Publish.TYPE: {
+                    const publishRequest = this._publishRequests.get(message.requestID);
+                    publishRequest.reject(
+                        new ApplicationError(message.uri, {args: message.args, kwargs: message.kwargs})
+                    );
+                    this._publishRequests.delete(message.requestID);
                     break;
                 }
                 default:
@@ -176,5 +196,31 @@ export class Session {
         this._baseSession.send(this._wampSession.sendMessage(unregister));
 
         return promise;
+    }
+
+    async publish(
+        topic: string,
+        publishOptions: {
+            args?: any[] | null,
+            kwargs?: { [key: string]: any } | null,
+            options?: { [key: string]: any } | null
+        } = {}
+    ): Promise<void | null> {
+        const publish = new Publish(new PublishFields(
+            this._nextID, topic, publishOptions.args, publishOptions.kwargs, publishOptions.options)
+        );
+
+        this._baseSession.send(this._wampSession.sendMessage(publish));
+        if (publishOptions.options?.["acknowledge"]) {
+            let promiseHandler: { resolve: () => void; reject: (reason: ApplicationError) => void; };
+            const promise = new Promise<void>((resolve, reject) => {
+                promiseHandler = {resolve, reject};
+            });
+            this._publishRequests.set(publish.requestID, promiseHandler);
+
+            return promise;
+        }
+
+        return null;
     }
 }
