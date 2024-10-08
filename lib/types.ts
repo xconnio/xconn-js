@@ -165,3 +165,29 @@ export class UnregisterRequest {
     ) {
     }
 }
+
+export class Subscription {
+    constructor(public readonly subscriptionID: number) {
+        this.subscriptionID = subscriptionID;
+    }
+}
+
+export class SubscribeRequest {
+    constructor(
+        public readonly promise: {
+            resolve: (value: Subscription) => void,
+            reject: (reason: ApplicationError) => void
+        },
+        public readonly endpoint: (event: Event) => void
+    ) {
+    }
+}
+
+export class Event {
+    constructor(
+        public readonly args: any[] = [],
+        public readonly kwargs: { [key: string]: any } = {},
+        public readonly details: { [key: string]: any } = {}
+    ) {
+    }
+}
