@@ -12,12 +12,25 @@ import {
     Unregister, UnregisterFields,
     Unregistered,
     Publish, PublishFields,
-    Published
+    Published,
+    Subscribe, SubscribeFields,
+    Subscribed,
+    Event as EventMsg
 } from "wampproto";
 
 import {wampErrorString} from "./helpers";
 import {ApplicationError, ProtocolError} from "./exception";
-import {IBaseSession, Result, Invocation, RegisterRequest, Registration, UnregisterRequest} from "./types";
+import {
+    IBaseSession,
+    Result,
+    Invocation,
+    RegisterRequest,
+    Registration,
+    UnregisterRequest,
+    Event,
+    SubscribeRequest,
+    Subscription
+} from "./types";
 
 
 export class Session {
@@ -36,6 +49,8 @@ export class Session {
         resolve: () => void,
         reject: (reason: ApplicationError) => void
     }> = new Map();
+    private _subscribeRequests: Map<number, SubscribeRequest> = new Map();
+    private _subscriptions: Map<number, (event: Event) => void> = new Map();
 
     constructor(baseSession: IBaseSession) {
         this._baseSession = baseSession;
@@ -89,6 +104,18 @@ export class Session {
                 request.resolve();
                 this._publishRequests.delete(message.requestID);
             }
+        } else if (message instanceof Subscribed) {
+            const request = this._subscribeRequests.get(message.requestID);
+            if (request) {
+                this._subscriptions.set(message.subscriptionID, request.endpoint);
+                request.promise.resolve(new Subscription(message.subscriptionID));
+                this._subscribeRequests.delete(message.requestID);
+            }
+        } else if (message instanceof EventMsg) {
+            const endpoint = this._subscriptions.get(message.subscriptionID);
+            if (endpoint) {
+                endpoint(new Event(message.args, message.kwargs, message.details));
+            }
         } else if (message instanceof ErrorMsg) {
             switch (message.messageType) {
                 case Call.TYPE: {
@@ -121,6 +148,16 @@ export class Session {
                         new ApplicationError(message.uri, {args: message.args, kwargs: message.kwargs})
                     );
                     this._publishRequests.delete(message.requestID);
+                    break;
+                }
+                case Subscribe.TYPE: {
+                    const subscribeRequest = this._subscribeRequests.get(message.requestID);
+                    if (subscribeRequest) {
+                        subscribeRequest.promise.reject(
+                            new ApplicationError(message.uri, {args: message.args, kwargs: message.kwargs})
+                        )
+                        this._subscribeRequests.delete(message.requestID);
+                    }
                     break;
                 }
                 default:
@@ -222,5 +259,28 @@ export class Session {
         }
 
         return null;
+    }
+
+    async subscribe(
+        topic: string,
+        endpoint: (event: Event) => void,
+        options?: { [key: string]: any } | null
+    ): Promise<Subscription> {
+        const subscribe = new Subscribe(new SubscribeFields(this._nextID, topic, options));
+
+        let promiseHandler: {
+            resolve: (value: Subscription | PromiseLike<Subscription>) => void;
+            reject: (reason: ApplicationError) => void;
+        };
+
+        const promise = new Promise<Subscription>((resolve, reject) => {
+            promiseHandler = {resolve, reject};
+        });
+
+        const request = new SubscribeRequest(promiseHandler, endpoint);
+        this._subscribeRequests.set(subscribe.requestID, request);
+        this._baseSession.send(this._wampSession.sendMessage(subscribe));
+
+        return promise;
     }
 }
