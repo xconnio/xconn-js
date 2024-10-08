@@ -191,3 +191,11 @@ export class Event {
     ) {
     }
 }
+
+export class UnsubscribeRequest {
+    constructor(
+        public readonly promise: { resolve: () => void; reject: (reason: ApplicationError) => void },
+        public readonly subscriptionID: number
+    ) {
+    }
+}

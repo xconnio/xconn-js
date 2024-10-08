@@ -15,7 +15,9 @@ import {
     Published,
     Subscribe, SubscribeFields,
     Subscribed,
-    Event as EventMsg
+    Event as EventMsg,
+    Unsubscribe, UnsubscribeFields,
+    Unsubscribed
 } from "wampproto";
 
 import {wampErrorString} from "./helpers";
@@ -29,7 +31,8 @@ import {
     UnregisterRequest,
     Event,
     SubscribeRequest,
-    Subscription
+    Subscription,
+    UnsubscribeRequest
 } from "./types";
 
 
@@ -51,6 +54,7 @@ export class Session {
     }> = new Map();
     private _subscribeRequests: Map<number, SubscribeRequest> = new Map();
     private _subscriptions: Map<number, (event: Event) => void> = new Map();
+    private _unsubscribeRequests: Map<number, UnsubscribeRequest> = new Map();
 
     constructor(baseSession: IBaseSession) {
         this._baseSession = baseSession;
@@ -116,6 +120,13 @@ export class Session {
             if (endpoint) {
                 endpoint(new Event(message.args, message.kwargs, message.details));
             }
+        } else if (message instanceof Unsubscribed) {
+            const request = this._unsubscribeRequests.get(message.requestID);
+            if (request) {
+                this._subscriptions.delete(request.subscriptionID);
+                request.promise.resolve();
+                this._unsubscribeRequests.delete(message.requestID);
+            }
         } else if (message instanceof ErrorMsg) {
             switch (message.messageType) {
                 case Call.TYPE: {
@@ -157,6 +168,16 @@ export class Session {
                             new ApplicationError(message.uri, {args: message.args, kwargs: message.kwargs})
                         )
                         this._subscribeRequests.delete(message.requestID);
+                    }
+                    break;
+                }
+                case Unsubscribe.TYPE: {
+                    const unsubscribeRequest = this._unsubscribeRequests.get(message.requestID);
+                    if (unsubscribeRequest) {
+                        unsubscribeRequest.promise.reject(
+                            new ApplicationError(message.uri, {args: message.args, kwargs: message.kwargs})
+                        )
+                        this._unsubscribeRequests.delete(message.requestID);
                     }
                     break;
                 }
@@ -280,6 +301,23 @@ export class Session {
         const request = new SubscribeRequest(promiseHandler, endpoint);
         this._subscribeRequests.set(subscribe.requestID, request);
         this._baseSession.send(this._wampSession.sendMessage(subscribe));
+
+        return promise;
+    }
+
+    async unsubscribe(sub: Subscription): Promise<void> {
+        const unsubscribe = new Unsubscribe(new UnsubscribeFields(this._nextID, sub.subscriptionID));
+        let promiseHandler: {
+            resolve: () => void;
+            reject: (reason: ApplicationError) => void
+        };
+
+        const promise = new Promise<void>((resolve, reject) => {
+            promiseHandler = {resolve, reject};
+        });
+        const request = new UnsubscribeRequest(promiseHandler, sub.subscriptionID);
+        this._unsubscribeRequests.set(unsubscribe.requestID, request);
+        this._baseSession.send(this._wampSession.sendMessage(unsubscribe));
 
         return promise;
     }
