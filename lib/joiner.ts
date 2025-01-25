@@ -1,4 +1,5 @@
 import {Joiner, ClientAuthenticator, Serializer, JSONSerializer} from 'wampproto';
+import WebSocket from 'ws';
 
 import {BaseSession} from './types';
 import {getSubProtocol} from './helpers';
