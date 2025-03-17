@@ -1,5 +1,10 @@
 import {Joiner, ClientAuthenticator, Serializer, JSONSerializer} from 'wampproto';
-import WebSocket from 'ws';
+
+if (typeof globalThis.WebSocket === 'undefined') {
+    import('ws').then((ws) => {
+        (globalThis as any).WebSocket = ws.default;
+    });
+}
 
 import {BaseSession} from './types';
 import {getSubProtocol} from './helpers';
@@ -15,7 +20,7 @@ export class WAMPSessionJoiner {
     }
 
     async join(uri: string, realm: string): Promise<BaseSession> {
-        const ws = new WebSocket(uri, [getSubProtocol(this._serializer)]);
+        const ws = new globalThis.WebSocket(uri, [getSubProtocol(this._serializer)]);
 
         const joiner = new Joiner(realm, this._serializer, this._authenticator);
 
