@@ -99,8 +99,13 @@ export class BaseSession extends IBaseSession {
 
     async receive(): Promise<any> {
         return new Promise((resolve) => {
-            const messageHandler = (event: MessageEvent) => {
-                resolve(event.data);
+            const messageHandler = async (event: MessageEvent) => {
+                let data = event.data;
+
+                if (event.data instanceof Blob) {
+                    data = new Uint8Array(await event.data.arrayBuffer());
+                }
+                resolve(data);
                 this._ws.removeEventListener("message", messageHandler);
             };
 

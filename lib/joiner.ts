@@ -29,9 +29,15 @@ export class WAMPSessionJoiner {
         });
 
         return new Promise<BaseSession>((resolve, reject) => {
-            const wsMessageHandler = (event: MessageEvent) => {
+            const wsMessageHandler = async (event: MessageEvent) => {
                 try {
-                    const toSend = joiner.receive(event.data);
+                    let data = event.data;
+
+                    if (event.data instanceof Blob) {
+                        data = new Uint8Array(await event.data.arrayBuffer());
+                    }
+
+                    const toSend = joiner.receive(data);
                     if (!toSend) {
                         ws.removeEventListener('message', wsMessageHandler);
                         ws.removeEventListener('close', closeHandler);
