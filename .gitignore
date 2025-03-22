@@ -1,6 +1,7 @@
 .idea/
 ts-built/
 coverage/
+types/
 
 /tmp
 /out-tsc
