@@ -1,9 +1,11 @@
 {
-  "name": "xconn-ts",
+  "name": "xconn",
   "version": "0.1.0",
   "description": "XConn",
-  "main": "dist/index.js",
+  "main": "ts-built/index.js",
+  "types": "types/index.d.ts",
   "scripts": {
+    "postinstall": "tsc --outDir ./ts-built",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint . --ext .ts",
@@ -26,6 +28,5 @@
     "eslint": "^8.57.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.4"
-  },
-  "private": true
+  }
 }

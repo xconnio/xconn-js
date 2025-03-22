@@ -3,10 +3,16 @@
     "module": "commonjs",
     "target": "ES6",
     "outDir": "ts-built",
-    "rootDir": "./"
+    "rootDir": "./lib",
+    "declaration": true,
+    "declarationDir": "types",
+    "moduleResolution": "node"
   },
   "include": [
     "lib/**/*",
-    "tests/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "ts-built"
   ]
 }
