@@ -4,8 +4,8 @@ import {
     JSONSerializer,
     MsgPackSerializer,
     WAMPCRAAuthenticator,
-    Anonymous,
-    Ticket,
+    AnonymousAuthenticator,
+    TicketAuthenticator,
     Event
 } from "wampproto";
 import {Client} from "../../lib";
@@ -27,8 +27,8 @@ const SERIALIZERS = [
     new MsgPackSerializer(),
 ];
 const AUTHENTICATORS = [
-    new Anonymous("", {}),
-    new Ticket("ticket-user", {}, "ticket-pass"),
+    new AnonymousAuthenticator("", {}),
+    new TicketAuthenticator("ticket-user", {}, "ticket-pass"),
     new WAMPCRAAuthenticator("wamp-cra-user", "cra-secret", {}),
     new CryptoSignAuthenticator(
         "cryptosign-user",
