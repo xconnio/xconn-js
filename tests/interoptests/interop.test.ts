@@ -30,6 +30,7 @@ const AUTHENTICATORS = [
     new AnonymousAuthenticator("", {}),
     new TicketAuthenticator("ticket-user", {}, "ticket-pass"),
     new WAMPCRAAuthenticator("wamp-cra-user", "cra-secret", {}),
+    new WAMPCRAAuthenticator("wamp-cra-salt-user", "cra-salt-secret", {}),
     new CryptoSignAuthenticator(
         "cryptosign-user",
         "150085398329d255ad69e82bf47ced397bcec5b8fbeecd28a80edbbd85b49081",
