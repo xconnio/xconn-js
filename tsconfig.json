@@ -13,6 +13,7 @@
   ],
   "exclude": [
     "node_modules",
-    "ts-built"
+    "ts-built",
+    "**/*.test.ts"
   ]
 }
