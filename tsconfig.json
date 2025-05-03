@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "module": "commonjs",
-    "target": "ES6",
+    "target": "es2017",
     "outDir": "ts-built",
     "rootDir": "./lib",
     "declaration": true,
