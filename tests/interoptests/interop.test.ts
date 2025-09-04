@@ -28,7 +28,7 @@ const SERIALIZERS = [
 ];
 const AUTHENTICATORS = [
     new AnonymousAuthenticator("", {}),
-    new TicketAuthenticator("ticket-user", {}, "ticket-pass"),
+    new TicketAuthenticator("ticket-user","ticket-pass", {}),
     new WAMPCRAAuthenticator("wamp-cra-user", "cra-secret", {}),
     new WAMPCRAAuthenticator("wamp-cra-salt-user", "cra-salt-secret", {}),
     new CryptoSignAuthenticator(
