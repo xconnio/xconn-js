@@ -39,7 +39,7 @@ export class WAMPSessionJoiner {
                         data = new Uint8Array(await event.data.arrayBuffer());
                     }
 
-                    const toSend = joiner.receive(data);
+                    const toSend = await joiner.receive(data);
                     if (!toSend) {
                         ws.removeEventListener('message', wsMessageHandler);
                         ws.removeEventListener('close', closeHandler);
