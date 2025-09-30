@@ -1,14 +1,15 @@
 import {Joiner, ClientAuthenticator, Serializer, JSONSerializer} from 'wampproto';
 
-if (typeof globalThis.WebSocket === 'undefined') {
-    import('ws').then((ws) => {
-        (globalThis as any).WebSocket = ws.default;
-    });
-}
-
 import {BaseSession} from './types';
 import {getSubProtocol} from './helpers';
 
+
+async function ensureGlobalWebSocket() {
+    if (typeof globalThis.WebSocket === 'undefined') {
+        const ws = await import('ws');
+        globalThis.WebSocket = ws.default;
+    }
+}
 
 export class WAMPSessionJoiner {
     private readonly _authenticator?: ClientAuthenticator;
@@ -20,7 +21,8 @@ export class WAMPSessionJoiner {
     }
 
     async join(uri: string, realm: string): Promise<BaseSession> {
-        const ws = new globalThis.WebSocket(uri, [getSubProtocol(this._serializer)]);
+        await ensureGlobalWebSocket()
+        const ws = new WebSocket(uri, [getSubProtocol(this._serializer)]);
 
         const joiner = new Joiner(realm, this._serializer, this._authenticator);
 
@@ -37,7 +39,7 @@ export class WAMPSessionJoiner {
                         data = new Uint8Array(await event.data.arrayBuffer());
                     }
 
-                    const toSend = joiner.receive(data);
+                    const toSend = await joiner.receive(data);
                     if (!toSend) {
                         ws.removeEventListener('message', wsMessageHandler);
                         ws.removeEventListener('close', closeHandler);
