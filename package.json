@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "name": "xconn",
   "version": "0.1.0",
   "description": "XConn",
@@ -7,7 +8,7 @@
   "scripts": {
     "postinstall": "tsc --outDir ./ts-built",
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest ./lib/* ./tests/*",
     "lint": "eslint . --ext .ts",
     "lint-fix": "eslint . --ext .ts --fix"
   },
@@ -22,6 +23,7 @@
     "@babel/preset-env": "^7.24.7",
     "@babel/preset-typescript": "^7.24.7",
     "@jest/globals": "^29.7.0",
+    "@swc/jest": "^0.2.39",
     "@types/jest": "^29.5.12",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",

@@ -8,7 +8,7 @@ clean:
 	rm -rf ./node_modules ts-built
 
 test:
-	./node_modules/.bin/jest ./lib/* ./tests/*
+	npm run test
 
 check-lint:
 	npm run lint
