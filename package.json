@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "description": "XConn",
   "main": "ts-built/index.js",
-  "types": "types/index.d.ts",
+  "types": "ts-built/index.d.ts",
   "scripts": {
-    "postinstall": "tsc --outDir ./ts-built",
+    "postinstall": "tsdown lib/index.ts --out-dir ts-built --format esm --dts --clean",
     "build": "tsc",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest ./lib/* ./tests/*",
     "lint": "eslint . --ext .ts",
@@ -15,8 +15,9 @@
   "author": "Mahad Munir <mahad@xconn.io>",
   "license": "MIT",
   "dependencies": {
+    "tsdown": "^0.15.6",
     "typescript": "^5.5.3",
-    "wampproto": "github:xconnio/wampproto-ts#ae3ec41401ab8f7e02f7a8b0286073e3794ee839",
+    "wampproto": "github:xconnio/wampproto-ts#9131c18226245faad576f7ba06a18ffa057e3501",
     "ws": "^8.18.0"
   },
   "devDependencies": {

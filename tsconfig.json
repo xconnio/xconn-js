@@ -5,7 +5,7 @@
     "outDir": "ts-built",
     "rootDir": "./lib",
     "declaration": true,
-    "declarationDir": "types",
+    "declarationDir": "ts-built",
     "moduleResolution": "node"
   },
   "include": [
