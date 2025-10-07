@@ -2,3 +2,14 @@ export {Client, connectAnonymous, connectTicket, connectCRA, connectCryptosign} 
 export {ApplicationError, ProtocolError} from "./exception"
 export {Session} from './session'
 export {IBaseSession, BaseSession, Result, Registration, Invocation, Subscription, Event} from "./types"
+
+export {
+    JSONSerializer,
+    CBORSerializer,
+    MsgPackSerializer,
+
+    AnonymousAuthenticator,
+    TicketAuthenticator,
+    WAMPCRAAuthenticator,
+    CryptoSignAuthenticator,
+} from "wampproto";
