@@ -11,7 +11,9 @@
   },
   "types": "ts-built/index.d.ts",
   "scripts": {
-    "postinstall": "npm run build",
+    "prepare": "npm run build",
+    "postinstall": "npm run postinstall:build",
+    "postinstall:build": "if [ ! -f ts-built/index.js ]; then npm run build; fi",
     "build": "rollup -c",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest ./lib/* ./tests/*",
     "lint": "eslint . --ext .ts",
