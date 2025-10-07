@@ -4,10 +4,14 @@
   "version": "0.1.0",
   "description": "XConn",
   "main": "ts-built/index.js",
+  "exports": {
+    "import": "./ts-built/index.js",
+    "require": "./ts-built/index.cjs"
+  },
   "types": "ts-built/index.d.ts",
   "scripts": {
-    "postinstall": "tsdown lib/index.ts --out-dir ts-built --format esm --dts --clean",
-    "build": "tsc",
+    "postinstall": "npm run build",
+    "build": "rollup -c",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest ./lib/* ./tests/*",
     "lint": "eslint . --ext .ts",
     "lint-fix": "eslint . --ext .ts --fix"
@@ -15,7 +19,15 @@
   "author": "Mahad Munir <mahad@xconn.io>",
   "license": "MIT",
   "dependencies": {
+    "@rollup/plugin-typescript": "^12.1.4",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-commonjs": "^28.0.6",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-replace": "^6.0.2",
+    "rollup": "^4.52.4",
+    "rollup-plugin-dts": "^6.2.3",
     "tsdown": "^0.15.6",
+    "tslib": "^2.8.1",
     "typescript": "^5.5.3",
     "wampproto": "github:xconnio/wampproto-ts#9131c18226245faad576f7ba06a18ffa057e3501",
     "ws": "^8.18.0"
