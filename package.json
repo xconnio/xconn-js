@@ -6,7 +6,8 @@
   "main": "ts-built/index.js",
   "exports": {
     "import": "./ts-built/index.js",
-    "require": "./ts-built/index.cjs"
+    "require": "./ts-built/index.cjs",
+    "types": "./ts-built/index.d.ts"
   },
   "types": "ts-built/index.d.ts",
   "scripts": {
