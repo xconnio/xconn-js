@@ -46,7 +46,7 @@ export class Session {
         reject: (reason: ApplicationError) => void
     }> = new Map();
     private _registerRequests: Map<number, RegisterRequest> = new Map();
-    private _registrations: Map<number, (invocation: Invocation) => Result> = new Map();
+    private _registrations: Map<number, (invocation: Invocation) => Result | Promise<Result>> = new Map();
     private _unregisterRequests: Map<number, UnregisterRequest> = new Map();
     private _publishRequests: Map<number, {
         resolve: () => void,
@@ -63,7 +63,7 @@ export class Session {
         (async () => {
             for (; ;) {
                 const message = await this._baseSession.receive();
-                this._processIncomingMessage(this._wampSession.receive(message));
+                await this._processIncomingMessage(this._wampSession.receive(message));
             }
         })();
     }
@@ -76,7 +76,7 @@ export class Session {
         await this._baseSession.close();
     }
 
-    private _processIncomingMessage(message: Message): void {
+    private async _processIncomingMessage(message: Message): Promise<void> {
         if (message instanceof ResultMsg) {
             const promiseHandler = this._callRequests.get(message.requestID);
             promiseHandler.resolve(new Result(message.args, message.kwargs, message.options));
@@ -90,7 +90,7 @@ export class Session {
         } else if (message instanceof InvocationMsg) {
             const endpoint = this._registrations.get(message.registrationID);
             if (endpoint) {
-                const result = endpoint(new Invocation(message.args, message.kwargs, message.details));
+                const result = await endpoint(new Invocation(message.args, message.kwargs, message.details));
                 this._baseSession.send(this._wampSession.sendMessage(new Yield(
                     new YieldFields(message.requestID, result.args, result.kwargs, result.details)
                 )));
@@ -218,7 +218,7 @@ export class Session {
 
     async register(
         procedure: string,
-        endpoint: (invocation: Invocation) => Result,
+        endpoint: (invocation: Invocation) => Result | Promise<Result>,
         options?: { [key: string]: any } | null
     ): Promise<Registration> {
         const register = new Register(new RegisterFields(this._nextID, procedure, options));
