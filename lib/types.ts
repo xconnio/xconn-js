@@ -1,5 +1,6 @@
 import {Serializer, Message, SessionDetails} from "wampproto";
 
+import {Session} from "./session";
 import {ApplicationError} from "./exception";
 
 
@@ -140,7 +141,10 @@ export class Result {
 }
 
 export class Registration {
-    constructor(public readonly registrationID: number) {
+    constructor(public readonly registrationID: number, private readonly session: Session) {}
+
+    async unregister(): Promise<void> {
+        return this.session.unregister(this)
     }
 }
 
@@ -172,8 +176,10 @@ export class UnregisterRequest {
 }
 
 export class Subscription {
-    constructor(public readonly subscriptionID: number) {
-        this.subscriptionID = subscriptionID;
+    constructor(public readonly subscriptionID: number, private readonly session: Session) {}
+
+    async unsubscribe(): Promise<void> {
+        return this.session.unsubscribe(this)
     }
 }
 
