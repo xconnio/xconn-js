@@ -84,7 +84,7 @@ export class Session {
             const request = this._registerRequests.get(message.requestID);
             if (request) {
                 this._registrations.set(message.registrationID, request.endpoint);
-                request.promise.resolve(new Registration(message.registrationID));
+                request.promise.resolve(new Registration(message.registrationID, this));
                 this._registerRequests.delete(message.requestID);
             }
         } else if (message instanceof InvocationMsg) {

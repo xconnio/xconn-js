@@ -39,9 +39,9 @@ async function main() {
     process.on("SIGINT", async () => {
         console.log("SIGINT received. Cleaning up...");
 
-        await session.unregister(echoRegistration);
-        await session.unregister(echoAsyncRegistration);
-        await session.unregister(sumRegistration);
+        await echoRegistration.unregister();
+        await echoAsyncRegistration.unregister();
+        await sumRegistration.unregister();
         await session.close();
 
         process.exit(0);
