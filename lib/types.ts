@@ -150,7 +150,7 @@ export class RegisterRequest {
             resolve: (value: Registration) => void,
             reject: (reason: ApplicationError) => void
         },
-        public readonly endpoint: (invocation: Invocation) => Result) {
+        public readonly endpoint: (invocation: Invocation) => Result | Promise<Result>) {
     }
 }
 

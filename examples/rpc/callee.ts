@@ -2,6 +2,7 @@ import {connectAnonymous, Invocation, Result} from "../../lib";
 
 async function main() {
     const testProcedureEcho = "io.xconn.echo";
+    const testProcedureAsyncEcho = "io.xconn.async.echo";
     const testProcedureSum = "io.xconn.sum";
 
     const session = await connectAnonymous("ws://localhost:8080/ws", "realm1");
@@ -12,10 +13,10 @@ async function main() {
         return new Result(inv.args, inv.kwargs);
     };
 
-    // Handler for "io.xconn.result"
-    const noResultHandler = (inv: Invocation): Result => {
+    // Handler for "io.xconn.async.echo"
+    const echoAsyncHandler = async (inv: Invocation): Promise<Result> => {
         console.log(`Received args=${inv.args}, kwargs=${inv.kwargs}`);
-        return new Result();
+        return new Result(inv.args, inv.kwargs);
     };
 
     // Handler for "io.xconn.sum"
@@ -28,6 +29,9 @@ async function main() {
     const echoRegistration = await session.register(testProcedureEcho, echo);
     console.log(`Registered procedure '${testProcedureEcho}'`);
 
+    const echoAsyncRegistration = await session.register(testProcedureAsyncEcho, echoAsyncHandler);
+    console.log(`Registered procedure '${testProcedureAsyncEcho}'`);
+
     const sumRegistration = await session.register(testProcedureSum, sumHandler);
     console.log(`Registered procedure '${testProcedureSum}'`);
 
@@ -36,6 +40,7 @@ async function main() {
         console.log("SIGINT received. Cleaning up...");
 
         await session.unregister(echoRegistration);
+        await session.unregister(echoAsyncRegistration);
         await session.unregister(sumRegistration);
         await session.close();
 
