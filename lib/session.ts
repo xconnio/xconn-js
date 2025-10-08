@@ -112,7 +112,7 @@ export class Session {
             const request = this._subscribeRequests.get(message.requestID);
             if (request) {
                 this._subscriptions.set(message.subscriptionID, request.endpoint);
-                request.promise.resolve(new Subscription(message.subscriptionID));
+                request.promise.resolve(new Subscription(message.subscriptionID, this));
                 this._subscribeRequests.delete(message.requestID);
             }
         } else if (message instanceof EventMsg) {

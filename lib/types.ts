@@ -176,8 +176,10 @@ export class UnregisterRequest {
 }
 
 export class Subscription {
-    constructor(public readonly subscriptionID: number) {
-        this.subscriptionID = subscriptionID;
+    constructor(public readonly subscriptionID: number, private readonly session: Session) {}
+
+    async unsubscribe(): Promise<void> {
+        return this.session.unsubscribe(this)
     }
 }
 

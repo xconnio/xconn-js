@@ -15,7 +15,7 @@ async function main() {
     // Handle SIGINT (Ctrl+C) to cleanup
     process.on("SIGINT", async () => {
         console.log("SIGINT received. Cleaning up...");
-        await session.unsubscribe(subscription);
+        await subscription.unsubscribe();
         await session.close();
         process.exit(0);
     });
