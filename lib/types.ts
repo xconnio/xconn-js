@@ -44,6 +44,10 @@ export abstract class IBaseSession {
     async close(): Promise<void> {
         throw new Error("UnimplementedError");
     }
+
+    isConnected(): boolean {
+        throw new Error("UnimplementedError");
+    }
 }
 
 export class BaseSession extends IBaseSession {
@@ -125,6 +129,10 @@ export class BaseSession extends IBaseSession {
         }
 
         this._ws.close();
+    }
+
+    isConnected(): boolean {
+        return this._ws.readyState === WebSocket.OPEN;
     }
 }
 
