@@ -78,6 +78,10 @@ export class Session {
         await this._baseSession.close();
     }
 
+    isConnected(): boolean {
+        return this._baseSession.isConnected();
+    }
+
     private async _processIncomingMessage(message: Message): Promise<void> {
         if (message instanceof ResultMsg) {
             const promiseHandler = this._callRequests.get(message.requestID);
