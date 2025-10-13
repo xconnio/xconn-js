@@ -18,11 +18,12 @@ import {
     Event as EventMsg,
     Unsubscribe, UnsubscribeFields,
     Unsubscribed,
-    Error, ErrorFields
+    Error, ErrorFields,
+    Goodbye, GoodbyeFields
 } from "wampproto";
 
 import {wampErrorString} from "./helpers";
-import {ERROR_RUNTIME_ERROR} from "./wamp";
+import {ERROR_RUNTIME_ERROR, CLOSE_CLOSE_REALM} from "./wamp";
 import {ApplicationError, ProtocolError} from "./exception";
 import {
     IBaseSession,
@@ -58,6 +59,20 @@ export class Session {
     private _subscriptions: Map<number, (event: Event) => void> = new Map();
     private _unsubscribeRequests: Map<number, UnsubscribeRequest> = new Map();
 
+    private _goodbyeRequest = (() => {
+        let resolve!: () => void;
+        let isCompleted = false;
+        const promise = new Promise<void>((res) => {
+            resolve = () => {
+                if (!isCompleted) {
+                    isCompleted = true;
+                    res();
+                }
+            };
+        });
+        return { promise, resolve, isCompleted };
+    })();
+
     constructor(baseSession: IBaseSession) {
         this._baseSession = baseSession;
         this._wampSession = new WAMPSession(baseSession.serializer());
@@ -75,7 +90,21 @@ export class Session {
     }
 
     async close(): Promise<void> {
-        await this._baseSession.close();
+        const goodbye = new Goodbye(new GoodbyeFields({}, CLOSE_CLOSE_REALM));
+        const data = this._wampSession.sendMessage(goodbye)
+        this._baseSession.send(data)
+
+        return Promise.race([
+            this._goodbyeRequest.promise,
+            new Promise<void>((resolve) =>
+                setTimeout(async () => {
+                    await this._baseSession.close();
+                    resolve();
+                }, 10_000)
+            )
+        ]).finally(async () => {
+            await this._baseSession.close();
+        });
     }
 
     isConnected(): boolean {
@@ -204,8 +233,20 @@ export class Session {
                 default:
                     throw new ProtocolError(wampErrorString(message));
             }
+        } else if (message instanceof Goodbye) {
+            this.markDisconnected()
         } else {
             throw new ProtocolError(`Unexpected message type ${typeof message}`);
+        }
+    }
+
+    private markDisconnected() {
+        if (!this.isConnected()) {
+            return
+        }
+
+        if (this._goodbyeRequest && !this._goodbyeRequest.isCompleted) {
+            this._goodbyeRequest.resolve();
         }
     }
 
