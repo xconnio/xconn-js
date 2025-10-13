@@ -17,10 +17,12 @@ import {
     Subscribed,
     Event as EventMsg,
     Unsubscribe, UnsubscribeFields,
-    Unsubscribed
+    Unsubscribed,
+    Error, ErrorFields
 } from "wampproto";
 
 import {wampErrorString} from "./helpers";
+import {ERROR_RUNTIME_ERROR} from "./wamp";
 import {ApplicationError, ProtocolError} from "./exception";
 import {
     IBaseSession,
@@ -89,11 +91,25 @@ export class Session {
             }
         } else if (message instanceof InvocationMsg) {
             const endpoint = this._registrations.get(message.registrationID);
-            if (endpoint) {
-                const result = await endpoint(new Invocation(message.args, message.kwargs, message.details));
-                this._baseSession.send(this._wampSession.sendMessage(new Yield(
-                    new YieldFields(message.requestID, result.args, result.kwargs, result.details)
-                )));
+            try {
+                if (endpoint) {
+                    const result = await endpoint(new Invocation(message.args, message.kwargs, message.details));
+                    this._baseSession.send(this._wampSession.sendMessage(new Yield(
+                        new YieldFields(message.requestID, result.args, result.kwargs, result.details)
+                    )));
+                }
+            } catch (err) {
+                let error: Message;
+                if (err instanceof ApplicationError) {
+                    error = new Error(new ErrorFields(
+                        message.type(), message.requestID, err.message, err.args, err.kwargs
+                    ));
+                } else {
+                    error = new Error(new ErrorFields(
+                        message.type(), message.requestID, ERROR_RUNTIME_ERROR, [err.toString()]
+                    ));
+                }
+                this._baseSession.send(this._wampSession.sendMessage(error));
             }
         } else if (message instanceof Unregistered) {
             const request = this._unregisterRequests.get(message.requestID);
