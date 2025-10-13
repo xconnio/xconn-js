@@ -43,6 +43,7 @@ export class Session {
     private _baseSession: IBaseSession;
     private _wampSession: WAMPSession;
     private _idGen: SessionScopeIDGenerator = new SessionScopeIDGenerator();
+    private _onDisconnect?: () => Promise<void>;
 
     private _callRequests: Map<number, {
         resolve: (value: Result) => void,
@@ -76,6 +77,7 @@ export class Session {
     constructor(baseSession: IBaseSession) {
         this._baseSession = baseSession;
         this._wampSession = new WAMPSession(baseSession.serializer());
+        this._baseSession.setOnDisconnect(async () => await this.markDisconnected());
 
         (async () => {
             for (; ;) {
@@ -83,6 +85,10 @@ export class Session {
                 await this._processIncomingMessage(this._wampSession.receive(message));
             }
         })();
+    }
+
+    setDisconnectCallback(callback: () => Promise<void>): void {
+        this._onDisconnect = callback;
     }
 
     private get _nextID(): number {
@@ -234,13 +240,17 @@ export class Session {
                     throw new ProtocolError(wampErrorString(message));
             }
         } else if (message instanceof Goodbye) {
-            this.markDisconnected()
+            await this.markDisconnected()
         } else {
             throw new ProtocolError(`Unexpected message type ${typeof message}`);
         }
     }
 
-    private markDisconnected() {
+    private async markDisconnected() {
+        if (this._onDisconnect) {
+            await this._onDisconnect();
+        }
+
         if (!this.isConnected()) {
             return
         }
