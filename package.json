@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "xconn",
+  "name": "@xconnio/xconn",
   "version": "0.1.0",
   "description": "XConn",
   "main": "ts-built/index.js",
@@ -10,6 +10,9 @@
     "types": "./ts-built/index.d.ts"
   },
   "types": "ts-built/index.d.ts",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
   "scripts": {
     "prepare": "npm run build",
     "postinstall": "npm run postinstall:build",
