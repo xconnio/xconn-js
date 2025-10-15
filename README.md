@@ -1,15 +1,15 @@
-# xconn-typescript
-A TypeScript WAMP client library built for both browser and Node.js environments.
+# xconn
+A JavaScript WAMP client library built for both browser and Node.js environments.
 
 ## Installation
 
-To install `xconn-typescript`, add the following in your `package.json` file:
+To install `xconn`, add the following in your `package.json` file:
 
 ### Install from github
 
-```typescript
+```javascript
 "dependencies": {
-    "xconn": "github:xconnio/xconn-ts#13fbafb2c8e1e30a1cf13803fd207f5705270e24"
+    "xconn": "github:xconnio/xconn-js#13fbafb2c8e1e30a1cf13803fd207f5705270e24"
 }
 ```
 
@@ -17,7 +17,7 @@ To install `xconn-typescript`, add the following in your `package.json` file:
 
 Creating a client:
 
-```typescript
+```javascript
 import {connectAnonymous} from "xconn";
 
 
@@ -31,7 +31,7 @@ operations:
 
 ### Subscribe to a topic
 
-```typescript
+```javascript
 import {Event, Session} from "xconn";
 
 
@@ -46,7 +46,7 @@ async function exampleSubscribe(session: Session) {
 
 ### Publish to a topic
 
-```typescript
+```javascript
 import {Session} from "xconn";
 
 
@@ -57,7 +57,7 @@ async function examplePublish(session: Session) {
 
 ### Register a procedure
 
-```typescript
+```javascript
 import {Session, Invocation, Result} from "xconn";
 
 
@@ -73,7 +73,7 @@ async function echoHandler(session: Session) {
 
 ### Call a procedure
 
-```typescript
+```javascript
 import {Session} from "xconn";
 
 
@@ -88,19 +88,19 @@ Authentication is straightforward.
 
 ### Ticket Auth
 
-```typescript
+```javascript
 const session = await connectTicket("ws://localhost:8080/ws", "realm1", "authid", "ticket");
 ```
 
 ### Challenge Response Auth
 
-```typescript
+```javascript
 const session = await connectCRA("ws://localhost:8080/ws", "realm1", "authid", "secret");
 ```
 
 ### Cryptosign Auth
 
-```typescript
+```javascript
 const session = await connectCryptosign("ws://localhost:8080/ws", "realm1", "authid", "150085398329d255ad69e82bf47ced397bcec5b8fbeecd28a80edbbd85b49081");
 ```
 
