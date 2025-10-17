@@ -196,10 +196,14 @@ export class UnregisterRequest {
 }
 
 export class Subscription {
-    constructor(public readonly subscriptionID: number, private readonly session: Session) {}
+    constructor(
+        public readonly subscriptionID: number,
+        private readonly session: Session,
+        public readonly eventHandler: (event: Event) => void
+    ) {}
 
     async unsubscribe(): Promise<void> {
-        return this.session.unsubscribe(this)
+        return this.session.unsubscribe(this);
     }
 }
 
