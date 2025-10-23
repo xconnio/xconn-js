@@ -32,7 +32,7 @@
     "tsdown": "^0.15.6",
     "tslib": "^2.8.1",
     "typescript": "^5.5.3",
-    "wampproto": "github:xconnio/wampproto-ts#9131c18226245faad576f7ba06a18ffa057e3501",
+    "wampproto": "github:xconnio/wampproto-js#4150aa491591dd10c6857afef7e6c48ea595bdf7",
     "ws": "^8.18.0"
   },
   "devDependencies": {
