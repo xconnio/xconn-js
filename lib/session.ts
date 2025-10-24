@@ -274,18 +274,14 @@ export class Session {
 
     async publish(
         topic: string,
-        publishOptions: {
-            args?: any[] | null,
-            kwargs?: { [key: string]: any } | null,
-            options?: { [key: string]: any } | null
-        } = {}
+        args?: any[] | null,
+        kwargs?: { [key: string]: any } | null,
+        options?: { [key: string]: any } | null
     ): Promise<void | null> {
-        const publish = new Publish(new PublishFields(
-            this._nextID, topic, publishOptions.args, publishOptions.kwargs, publishOptions.options)
-        );
+        const publish = new Publish(new PublishFields(this._nextID, topic, args, kwargs, options));
 
         this._baseSession.send(this._wampSession.sendMessage(publish));
-        if (publishOptions.options?.["acknowledge"]) {
+        if (options?.["acknowledge"]) {
             let promiseHandler: { resolve: () => void; reject: (reason: ApplicationError) => void; };
             const promise = new Promise<void>((resolve, reject) => {
                 promiseHandler = {resolve, reject};
