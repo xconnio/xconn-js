@@ -64,7 +64,7 @@ describe("WAMP Tests", function () {
                     await subscriber.subscribe("io.xconn.test", eventHandler);
 
                     const publisher = await client.connect(url, REALM);
-                    await publisher.publish("io.xconn.test", {args: args, options: {"acknowledge": true}});
+                    await publisher.publish("io.xconn.test", args, {}, {"acknowledge": true});
 
                     await subscriber.close();
                     await publisher.close();
