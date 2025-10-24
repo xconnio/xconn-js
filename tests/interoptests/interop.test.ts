@@ -46,7 +46,7 @@ describe("WAMP Tests", function () {
                     const client = new Client({authenticator, serializer});
                     const session = await client.connect(url, REALM);
 
-                    const result = await session.call(PROCEDURE_ADD, {"args": [2, 2]});
+                    const result = await session.call(PROCEDURE_ADD, [2, 2]);
                     expect(result.args[0]).toBe(4);
 
                     await session.close();
@@ -82,7 +82,7 @@ describe("WAMP Tests", function () {
                     await callee.register("io.xconn.test", invHandler);
 
                     const caller = await client.connect(url, REALM);
-                    const result = await caller.call("io.xconn.test", {"args": args});
+                    const result = await caller.call("io.xconn.test", args);
                     expect(result.args).toEqual(args);
 
                     await callee.close();

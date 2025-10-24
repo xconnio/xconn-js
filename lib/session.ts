@@ -207,15 +207,11 @@ export class Session {
 
     async call(
         procedure: string,
-        callOptions: {
-            args?: any[] | null,
-            kwargs?: { [key: string]: any } | null,
-            options?: { [key: string]: any } | null
-        } = {}
+        args?: any[] | null,
+        kwargs?: { [key: string]: any } | null,
+        options?: { [key: string]: any } | null
     ): Promise<Result> {
-        const call = new Call(
-            new CallFields(this._nextID, procedure, callOptions.args, callOptions.kwargs, callOptions.options)
-        );
+        const call = new Call(new CallFields(this._nextID, procedure, args, kwargs, options));
 
         let promiseHandler: {
             resolve: (value: Result | PromiseLike<Result>) => void;
