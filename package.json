@@ -35,7 +35,7 @@
     "tsdown": "^0.15.6",
     "tslib": "^2.8.1",
     "typescript": "^5.5.3",
-    "wampproto": "^0.1.0",
+    "wampproto": "https://github.com/xconnio/wampproto-js.git#18d306739329ed5544800fb0a9c01fb707f4162b",
     "ws": "^8.18.0"
   },
   "devDependencies": {
