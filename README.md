@@ -51,7 +51,7 @@ import {Session} from "xconn";
 
 
 async function examplePublish(session: Session) {
-    await session.publish("io.xconn.example", {args: ["test"], kwargs: {"key": "value"}});
+    await session.publish("io.xconn.example", ["test"], {"key": "value"});
 }
 ```
 
@@ -78,7 +78,7 @@ import {Session} from "xconn";
 
 
 async function exampleCall(session: Session) {
-    await session.call("io.xconn.echo", {args: [1, 2], kwargs: {"key": "value"}});
+    await session.call("io.xconn.echo", [1, 2], {"key": "value"});
 }
 ```
 

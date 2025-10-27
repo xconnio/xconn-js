@@ -8,23 +8,19 @@ async function main() {
     await session.publish(testTopic);
 
     // publish event with args
-    await session.publish(testTopic, {args: ["Hello", "World"]});
+    await session.publish(testTopic, ["Hello", "World"]);
 
     // publish event with kwargs
-    await session.publish(testTopic, {kwargs: {"key": "value"}});
+    await session.publish(testTopic, [], {"key": "value"});
 
     // publish event with options
-    await session.publish(testTopic, {options: {"acknowledge": true}});
+    await session.publish(testTopic,[], {}, {"acknowledge": true});
 
     // publish event with args & kwargs
-    await session.publish(testTopic, {args: ["Hello", "World"], kwargs: {"key": "value"}});
+    await session.publish(testTopic, ["Hello", "World"], {"key": "value"});
 
     // publish event with args, kwargs & options
-    await session.publish(testTopic, {
-        args: ["Hello", "World"],
-        kwargs: {"key": "value"},
-        options: {"acknowledge": true}
-    });
+    await session.publish(testTopic, ["Hello", "World"], {"key": "value"}, {"acknowledge": true});
 
     console.log(`Published events to ${testTopic}`);
 
