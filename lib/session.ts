@@ -57,7 +57,7 @@ export class Session {
         reject: (reason: ApplicationError) => void
     }> = new Map();
     private _subscribeRequests: Map<number, SubscribeRequest> = new Map();
-    private _subscriptions: Map<number, (event: Event) => void> = new Map();
+    private _subscriptions: Map<number, Map<Subscription, Subscription>> = new Map();
     private _unsubscribeRequests: Map<number, UnsubscribeRequest> = new Map();
 
     private _goodbyeRequest = (() => {
@@ -166,14 +166,24 @@ export class Session {
         } else if (message instanceof Subscribed) {
             const request = this._subscribeRequests.get(message.requestID);
             if (request) {
-                this._subscriptions.set(message.subscriptionID, request.endpoint);
-                request.promise.resolve(new Subscription(message.subscriptionID, this));
+                const sub = new Subscription(message.subscriptionID, this, request.endpoint);
+                let subscriptions = this._subscriptions.get(message.subscriptionID);
+                if (!subscriptions) {
+                    subscriptions = new Map<Subscription, Subscription>();
+                    this._subscriptions.set(message.subscriptionID, subscriptions);
+                }
+                subscriptions.set(sub, sub);
+
+                request.promise.resolve(sub);
                 this._subscribeRequests.delete(message.requestID);
             }
         } else if (message instanceof EventMsg) {
-            const endpoint = this._subscriptions.get(message.subscriptionID);
-            if (endpoint) {
-                endpoint(new Event(message.args, message.kwargs, message.details));
+            const subscriptions = this._subscriptions.get(message.subscriptionID);
+            const event = new Event(message.args, message.kwargs, message.details);
+            if (subscriptions) {
+                for (const subscription of subscriptions.keys()) {
+                    subscription.eventHandler(event);
+                }
             }
         } else if (message instanceof Unsubscribed) {
             const request = this._unsubscribeRequests.get(message.requestID);
@@ -365,6 +375,15 @@ export class Session {
     }
 
     async unsubscribe(sub: Subscription): Promise<void> {
+        const subscriptions = this._subscriptions.get(sub.subscriptionID);
+        if (subscriptions) {
+            subscriptions.delete(sub);
+            if (subscriptions.size !== 0) {
+                this._subscriptions.set(sub.subscriptionID, subscriptions);
+                return
+            }
+        }
+
         const unsubscribe = new Unsubscribe(new UnsubscribeFields(this._nextID, sub.subscriptionID));
         let promiseHandler: {
             resolve: () => void;
