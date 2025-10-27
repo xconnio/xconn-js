@@ -18,11 +18,12 @@ import {
     Event as EventMsg,
     Unsubscribe, UnsubscribeFields,
     Unsubscribed,
-    Error, ErrorFields
+    Error, ErrorFields,
+    Goodbye, GoodbyeFields
 } from "wampproto";
 
 import {wampErrorString} from "./helpers";
-import {ERROR_RUNTIME_ERROR} from "./wamp";
+import {ERROR_RUNTIME_ERROR, CLOSE_CLOSE_REALM} from "./wamp";
 import {ApplicationError, ProtocolError} from "./exception";
 import {
     IBaseSession,
@@ -42,6 +43,7 @@ export class Session {
     private _baseSession: IBaseSession;
     private _wampSession: WAMPSession;
     private _idGen: SessionScopeIDGenerator = new SessionScopeIDGenerator();
+    private _disconnectCallbacks: Array<() => Promise<void>> = [];
 
     private _callRequests: Map<number, {
         resolve: (value: Result) => void,
@@ -58,9 +60,24 @@ export class Session {
     private _subscriptions: Map<number, (event: Event) => void> = new Map();
     private _unsubscribeRequests: Map<number, UnsubscribeRequest> = new Map();
 
+    private _goodbyeRequest = (() => {
+        let resolve!: () => void;
+        let isCompleted = false;
+        const promise = new Promise<void>((res) => {
+            resolve = () => {
+                if (!isCompleted) {
+                    isCompleted = true;
+                    res();
+                }
+            };
+        });
+        return { promise, resolve, isCompleted };
+    })();
+
     constructor(baseSession: IBaseSession) {
         this._baseSession = baseSession;
         this._wampSession = new WAMPSession(baseSession.serializer());
+        this._baseSession.onDisconnect(async () => { await this.markDisconnected();});
 
         (async () => {
             for (; ;) {
@@ -70,12 +87,34 @@ export class Session {
         })();
     }
 
+    onDisconnect(callback: () => Promise<void>): void {
+        this._disconnectCallbacks.push(callback);
+    }
+
     private get _nextID(): number {
         return this._idGen.next();
     }
 
     async close(): Promise<void> {
-        await this._baseSession.close();
+        const goodbye = new Goodbye(new GoodbyeFields({}, CLOSE_CLOSE_REALM));
+        const data = this._wampSession.sendMessage(goodbye)
+        this._baseSession.send(data)
+
+        return Promise.race([
+            this._goodbyeRequest.promise,
+            new Promise<void>((resolve) =>
+                setTimeout(async () => {
+                    await this._baseSession.close();
+                    resolve();
+                }, 10_000)
+            )
+        ]).finally(async () => {
+            await this._baseSession.close();
+        });
+    }
+
+    isConnected(): boolean {
+        return this._baseSession.isConnected();
     }
 
     private async _processIncomingMessage(message: Message): Promise<void> {
@@ -200,8 +239,20 @@ export class Session {
                 default:
                     throw new ProtocolError(wampErrorString(message));
             }
+        } else if (message instanceof Goodbye) {
+            await this.markDisconnected()
         } else {
             throw new ProtocolError(`Unexpected message type ${typeof message}`);
+        }
+    }
+
+    private async markDisconnected() {
+        if (this._disconnectCallbacks.length > 0) {
+            await Promise.all(this._disconnectCallbacks.map(cb => cb()));
+        }
+
+        if (this._goodbyeRequest && !this._goodbyeRequest.isCompleted) {
+            this._goodbyeRequest.resolve();
         }
     }
 

@@ -44,6 +44,14 @@ export abstract class IBaseSession {
     async close(): Promise<void> {
         throw new Error("UnimplementedError");
     }
+
+    isConnected(): boolean {
+        throw new Error("UnimplementedError");
+    }
+
+    onDisconnect(callback: () => Promise<void>): void {
+        throw new Error("UnimplementedError");
+    }
 }
 
 export class BaseSession extends IBaseSession {
@@ -51,6 +59,7 @@ export class BaseSession extends IBaseSession {
     private readonly _wsMessageHandler: any;
     private readonly sessionDetails: SessionDetails;
     private readonly _serializer: Serializer;
+    private _disconnectCallbacks: Array<() => Promise<void>> = [];
 
     constructor(
         ws: WebSocket,
@@ -66,6 +75,9 @@ export class BaseSession extends IBaseSession {
 
         // close cleanly on abrupt client disconnect
         this._ws.addEventListener("close", async () => {
+            if (this._disconnectCallbacks.length > 0) {
+                await Promise.all(this._disconnectCallbacks.map(cb => cb()));
+            }
             await this.close();
         });
     }
@@ -125,6 +137,14 @@ export class BaseSession extends IBaseSession {
         }
 
         this._ws.close();
+    }
+
+    isConnected(): boolean {
+        return this._ws.readyState === WebSocket.OPEN;
+    }
+
+    onDisconnect(callback: () => Promise<void>): void {
+        this._disconnectCallbacks.push(callback);
     }
 }
 
