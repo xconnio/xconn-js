@@ -63,7 +63,7 @@ export class BaseSession extends IBaseSession {
     private readonly _wsMessageHandler: any;
     private readonly sessionDetails: SessionDetails;
     private readonly _serializer: Serializer;
-    private _disconnectCallbacks: Array<() => Promise<void>> = [];
+    private _disconnectCallbacks: Array<(reason?: string) => Promise<void>> = [];
 
     constructor(
         ws: WebSocket,
@@ -147,7 +147,7 @@ export class BaseSession extends IBaseSession {
         return this._ws.readyState === WebSocket.OPEN;
     }
 
-    onDisconnect(callback: () => Promise<void>): void {
+    onDisconnect(callback: (reason?: string) => Promise<void>): void {
         this._disconnectCallbacks.push(callback);
     }
 
