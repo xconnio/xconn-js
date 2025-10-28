@@ -52,6 +52,10 @@ export abstract class IBaseSession {
     onDisconnect(callback: () => Promise<void>): void {
         throw new Error("UnimplementedError");
     }
+
+    getSessionDetails(): SessionDetails {
+        throw new Error("UnimplementedError");
+    }
 }
 
 export class BaseSession extends IBaseSession {
@@ -145,6 +149,10 @@ export class BaseSession extends IBaseSession {
 
     onDisconnect(callback: () => Promise<void>): void {
         this._disconnectCallbacks.push(callback);
+    }
+
+    getSessionDetails(): SessionDetails {
+        return this.sessionDetails;
     }
 }
 

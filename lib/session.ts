@@ -19,7 +19,7 @@ import {
     Unsubscribe, UnsubscribeFields,
     Unsubscribed,
     Error, ErrorFields,
-    Goodbye, GoodbyeFields
+    Goodbye, GoodbyeFields, SessionDetails
 } from "wampproto";
 
 import {wampErrorString} from "./helpers";
@@ -93,6 +93,10 @@ export class Session {
 
     private get _nextID(): number {
         return this._idGen.next();
+    }
+
+    public get details(): SessionDetails {
+        return this._baseSession.getSessionDetails();
     }
 
     async close(): Promise<void> {
