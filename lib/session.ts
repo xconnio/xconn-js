@@ -43,7 +43,7 @@ export class Session {
     private _baseSession: IBaseSession;
     private _wampSession: WAMPSession;
     private _idGen: SessionScopeIDGenerator = new SessionScopeIDGenerator();
-    private _disconnectCallbacks: Array<() => Promise<void>> = [];
+    private _disconnectCallbacks: Array<(reason?: string) => Promise<void>> = [];
 
     private _callRequests: Map<number, {
         resolve: (value: Result) => void,
@@ -87,7 +87,7 @@ export class Session {
         })();
     }
 
-    onDisconnect(callback: () => Promise<void>): void {
+    onDisconnect(callback: (reason: string) => Promise<void>): void {
         this._disconnectCallbacks.push(callback);
     }
 
@@ -244,15 +244,15 @@ export class Session {
                     throw new ProtocolError(wampErrorString(message));
             }
         } else if (message instanceof Goodbye) {
-            await this.markDisconnected()
+            await this.markDisconnected(message.reason)
         } else {
             throw new ProtocolError(`Unexpected message type ${typeof message}`);
         }
     }
 
-    private async markDisconnected() {
+    private async markDisconnected(reason?: string) {
         if (this._disconnectCallbacks.length > 0) {
-            await Promise.all(this._disconnectCallbacks.map(cb => cb()));
+            await Promise.all(this._disconnectCallbacks.map(cb => cb(reason)));
         }
 
         if (this._goodbyeRequest && !this._goodbyeRequest.isCompleted) {
