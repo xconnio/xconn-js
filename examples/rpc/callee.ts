@@ -42,7 +42,7 @@ async function main() {
         await echoRegistration.unregister();
         await echoAsyncRegistration.unregister();
         await sumRegistration.unregister();
-        await session.close();
+        await session.leave();
 
         process.exit(0);
     });

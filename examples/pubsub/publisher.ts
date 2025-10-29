@@ -24,7 +24,7 @@ async function main() {
 
     console.log(`Published events to ${testTopic}`);
 
-    await session.close();
+    await session.leave();
 }
 
 main().catch((err) => {

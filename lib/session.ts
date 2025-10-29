@@ -99,7 +99,7 @@ export class Session {
         return this._baseSession.getSessionDetails();
     }
 
-    async close(): Promise<void> {
+    async leave(): Promise<void> {
         const goodbye = new Goodbye(new GoodbyeFields({}, CLOSE_CLOSE_REALM));
         const data = this._wampSession.sendMessage(goodbye)
         this._baseSession.send(data)
