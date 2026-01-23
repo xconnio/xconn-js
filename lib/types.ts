@@ -160,11 +160,13 @@ export class Result {
     args: any[];
     kwargs: { [key: string]: any };
     details: { [key: string]: any };
+    progress: boolean;
 
     constructor(args?: any[], kwargs?: { [key: string]: any }, details?: { [key: string]: any }) {
         this.args = args || [];
         this.kwargs = kwargs || {};
         this.details = details || {};
+        this.progress = details?.progress === true;
     }
 }
 
@@ -187,10 +189,12 @@ export class RegisterRequest {
 }
 
 export class Invocation {
+    public sendProgress?: (args?: any[], kwargs?: { [key: string]: any }) => void;
+
     constructor(
         public readonly args: any[] = [],
         public readonly kwargs: { [key: string]: any } = {},
-        public readonly details: { [key: string]: any } = {}
+        public readonly details: { [key: string]: any } = {},
     ) {
     }
 }
@@ -242,3 +246,40 @@ export class UnsubscribeRequest {
     ) {
     }
 }
+
+export class ProgressResult {
+    private queue: Result[] = [];
+    private push: ((res: Result) => void) | null = null;
+    private done = false;
+    private finalResult: Result | null = null;
+
+    constructor(
+        private finalResultPromise: Promise<Result>,
+        private registerProgress: (handler: (res: Result) => Promise<void>) => void
+    ) {
+        // register a handler with the session
+        this.registerProgress(async (res) => {
+            if (this.done) return;
+            if (this.push) this.push(res);
+            else this.queue.push(res);
+        });
+
+        // when final result arrives
+        this.finalResultPromise.then((res) => {
+            this.done = true;
+            this.finalResult = res;
+            if (this.push) this.push(res);
+        });
+    }
+
+    async* receive(): AsyncGenerator<Result, Result, unknown> {
+        while (!this.done || this.queue.length) {
+            const next = this.queue.shift() ?? await new Promise<Result>((resolve) => (this.push = resolve));
+            yield next;
+            this.push = null;
+        }
+
+        return this.finalResult!;
+    }
+}
+

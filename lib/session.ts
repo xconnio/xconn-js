@@ -35,7 +35,8 @@ import {
     Event,
     SubscribeRequest,
     Subscription,
-    UnsubscribeRequest
+    UnsubscribeRequest,
+    ProgressResult,
 } from "./types";
 
 
@@ -59,6 +60,7 @@ export class Session {
     private _subscribeRequests: Map<number, SubscribeRequest> = new Map();
     private _subscriptions: Map<number, Map<Subscription, Subscription>> = new Map();
     private _unsubscribeRequests: Map<number, UnsubscribeRequest> = new Map();
+    private _progressHandlers: Map<number, (result: Result) => Promise<void>> = new Map();
 
     private _goodbyeRequest = (() => {
         let resolve!: () => void;
@@ -127,25 +129,49 @@ export class Session {
 
     private async _handleInvocation(invocationMessage: InvocationMsg){
         const endpoint = this._registrations.get(invocationMessage.registrationID);
-        try {
-            if (endpoint) {
-                const result = await endpoint(new Invocation(invocationMessage.args, invocationMessage.kwargs, invocationMessage.details));
-                this._baseSession.send(this._wampSession.sendMessage(new Yield(
+        if (endpoint) {
+            const invocation = new Invocation(
+                invocationMessage.args, invocationMessage.kwargs, invocationMessage.details
+            );
+
+            if (invocationMessage.details?.receive_progress === true) {
+                invocation.sendProgress = (args?: any[], kwargs?: { [key: string]: any }) => {
+                    const yieldMsg = new Yield(new YieldFields(
+                        invocationMessage.requestID, args, kwargs, { progress: true })
+                    );
+
+                    const data = this._wampSession.sendMessage(yieldMsg);
+                    this._baseSession.send(data);
+                };
+            }
+
+            try {
+                const result = await endpoint(invocation);
+
+                const msgToSend = new Yield(
                     new YieldFields(invocationMessage.requestID, result.args, result.kwargs, result.details)
-                )));
+                );
+
+                this._baseSession.send(this._wampSession.sendMessage(msgToSend));
+            } catch (err) {
+                let error: Message;
+
+                if (err instanceof ApplicationError) {
+                    error = new Error(
+                        new ErrorFields(
+                            invocationMessage.type(), invocationMessage.requestID, err.message, err.args, err.kwargs
+                        )
+                    );
+                } else {
+                    error = new Error(
+                        new ErrorFields(
+                            invocationMessage.type(), invocationMessage.requestID, ERROR_RUNTIME_ERROR, [String(err)]
+                        )
+                    );
+                }
+
+                this._baseSession.send(this._wampSession.sendMessage(error));
             }
-        } catch (err) {
-            let error: Message;
-            if (err instanceof ApplicationError) {
-                error = new Error(new ErrorFields(
-                    invocationMessage.type(), invocationMessage.requestID, err.message, err.args, err.kwargs
-                ));
-            } else {
-                error = new Error(new ErrorFields(
-                    invocationMessage.type(), invocationMessage.requestID, ERROR_RUNTIME_ERROR, [err.toString()]
-                ));
-            }
-            this._baseSession.send(this._wampSession.sendMessage(error));
         }
     }
 
@@ -161,8 +187,28 @@ export class Session {
 
     private async _processIncomingMessage(message: Message): Promise<void> {
         if (message instanceof ResultMsg) {
-            const promiseHandler = this._callRequests.get(message.requestID);
-            promiseHandler.resolve(new Result(message.args, message.kwargs, message.options));
+            const result = new Result(message.args, message.kwargs, message.options);
+            result.progress = message.options?.progress === true;
+
+            if (result.progress) {
+                const progressHandler = this._progressHandlers.get(message.requestID);
+                if (progressHandler) {
+                    try {
+                        await progressHandler(result);
+                    } catch (e) {
+                        // TODO: implement call canceling
+                        console.error(e);
+                    }
+                }
+            } else {
+                const promiseHandler = this._callRequests.get(message.requestID);
+                if (promiseHandler) {
+                    promiseHandler.resolve(result);
+                    this._callRequests.delete(message.requestID);
+                }
+
+                this._progressHandlers.delete(message.requestID);
+            }
         } else if (message instanceof Registered) {
             const request = this._registerRequests.get(message.requestID);
             if (request) {
@@ -290,15 +336,8 @@ export class Session {
         }
     }
 
-    async call(
-        procedure: string,
-        args?: any[] | null,
-        kwargs?: { [key: string]: any } | null,
-        options?: { [key: string]: any } | null
-    ): Promise<Result> {
-        const call = new Call(new CallFields(this._nextID, procedure, args, kwargs, options));
-
-        let promiseHandler: {
+    private _call(call: Call): Promise<Result> {
+        let promiseHandler!: {
             resolve: (value: Result | PromiseLike<Result>) => void;
             reject: (reason: ApplicationError) => void;
         };
@@ -311,6 +350,34 @@ export class Session {
         this._baseSession.send(this._wampSession.sendMessage(call));
 
         return promise;
+    }
+
+
+    async call(
+        procedure: string,
+        args?: any[] | null,
+        kwargs?: { [key: string]: any } | null,
+        options?: { [key: string]: any } | null
+    ): Promise<Result> {
+        const call = new Call(new CallFields(this._nextID, procedure, args, kwargs, options));
+
+        return this._call(call);
+    }
+
+    async callProgress(
+        procedure: string,
+        args?: any[],
+        kwargs?: { [key: string]: any },
+        options?: { [key: string]: any }
+    ): Promise<ProgressResult> {
+        const call = new Call(new CallFields(this._nextID, procedure, args, kwargs, options));
+        call.options.receive_progress = true;
+
+        const finalResultPromise = this._call(call);
+
+        return new ProgressResult(finalResultPromise, (handler) => {
+            this._progressHandlers.set(call.requestID, handler);
+        });
     }
 
     async register(
