@@ -101,20 +101,22 @@ export class Session {
 
     async close(): Promise<void> {
         const goodbye = new Goodbye(new GoodbyeFields({}, CLOSE_CLOSE_REALM));
-        const data = this._wampSession.sendMessage(goodbye)
-        this._baseSession.send(data)
+        const data = this._wampSession.sendMessage(goodbye);
+        this._baseSession.send(data);
 
-        return Promise.race([
-            this._goodbyeRequest.promise,
-            new Promise<void>((resolve) =>
-                setTimeout(async () => {
-                    await this._baseSession.close();
-                    resolve();
-                }, 10_000)
-            )
-        ]).finally(async () => {
-            await this._baseSession.close();
+        let timeoutHandle;
+        const timeoutPromise = new Promise<void>((resolve) => {
+            timeoutHandle = setTimeout(resolve, 10_000);
         });
+
+        try {
+            await Promise.race([this._goodbyeRequest.promise, timeoutPromise]);
+        } finally {
+            clearTimeout(timeoutHandle!);
+            if (this._baseSession.isConnected()) {
+                await this._baseSession.close();
+            }
+        }
     }
 
     isConnected(): boolean {
