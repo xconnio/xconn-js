@@ -74,6 +74,8 @@ export class Session {
         return { promise, resolve, isCompleted };
     })();
 
+    private _tasks: Set<Promise<void>> = new Set();
+
     constructor(baseSession: IBaseSession) {
         this._baseSession = baseSession;
         this._wampSession = new WAMPSession(baseSession.serializer());
@@ -123,6 +125,40 @@ export class Session {
         return this._baseSession.isConnected();
     }
 
+    private async _handleInvocation(invocationMessage: InvocationMsg){
+        const endpoint = this._registrations.get(invocationMessage.registrationID);
+        try {
+            if (endpoint) {
+                const result = await endpoint(new Invocation(invocationMessage.args, invocationMessage.kwargs, invocationMessage.details));
+                this._baseSession.send(this._wampSession.sendMessage(new Yield(
+                    new YieldFields(invocationMessage.requestID, result.args, result.kwargs, result.details)
+                )));
+            }
+        } catch (err) {
+            let error: Message;
+            if (err instanceof ApplicationError) {
+                error = new Error(new ErrorFields(
+                    invocationMessage.type(), invocationMessage.requestID, err.message, err.args, err.kwargs
+                ));
+            } else {
+                error = new Error(new ErrorFields(
+                    invocationMessage.type(), invocationMessage.requestID, ERROR_RUNTIME_ERROR, [err.toString()]
+                ));
+            }
+            this._baseSession.send(this._wampSession.sendMessage(error));
+        }
+    }
+
+    private async _handleEvent(eventMessage: EventMsg) {
+        const subscriptions = this._subscriptions.get(eventMessage.subscriptionID);
+        const event = new Event(eventMessage.args, eventMessage.kwargs, eventMessage.details);
+        if (subscriptions) {
+            for (const subscription of subscriptions.keys()) {
+                subscription.eventHandler(event);
+            }
+        }
+    }
+
     private async _processIncomingMessage(message: Message): Promise<void> {
         if (message instanceof ResultMsg) {
             const promiseHandler = this._callRequests.get(message.requestID);
@@ -135,27 +171,11 @@ export class Session {
                 this._registerRequests.delete(message.requestID);
             }
         } else if (message instanceof InvocationMsg) {
-            const endpoint = this._registrations.get(message.registrationID);
-            try {
-                if (endpoint) {
-                    const result = await endpoint(new Invocation(message.args, message.kwargs, message.details));
-                    this._baseSession.send(this._wampSession.sendMessage(new Yield(
-                        new YieldFields(message.requestID, result.args, result.kwargs, result.details)
-                    )));
-                }
-            } catch (err) {
-                let error: Message;
-                if (err instanceof ApplicationError) {
-                    error = new Error(new ErrorFields(
-                        message.type(), message.requestID, err.message, err.args, err.kwargs
-                    ));
-                } else {
-                    error = new Error(new ErrorFields(
-                        message.type(), message.requestID, ERROR_RUNTIME_ERROR, [err.toString()]
-                    ));
-                }
-                this._baseSession.send(this._wampSession.sendMessage(error));
-            }
+            const task = this._handleInvocation(message);
+            this._tasks.add(task);
+
+            // remove task upon completion
+            task.finally(() => this._tasks.delete(task));
         } else if (message instanceof Unregistered) {
             const request = this._unregisterRequests.get(message.requestID);
             if (request) {
@@ -184,13 +204,11 @@ export class Session {
                 this._subscribeRequests.delete(message.requestID);
             }
         } else if (message instanceof EventMsg) {
-            const subscriptions = this._subscriptions.get(message.subscriptionID);
-            const event = new Event(message.args, message.kwargs, message.details);
-            if (subscriptions) {
-                for (const subscription of subscriptions.keys()) {
-                    subscription.eventHandler(event);
-                }
-            }
+            const task = this._handleEvent(message);
+            this._tasks.add(task);
+
+            // remove task upon completion
+            task.finally(() => this._tasks.delete(task));
         } else if (message instanceof Unsubscribed) {
             const request = this._unsubscribeRequests.get(message.requestID);
             if (request) {
