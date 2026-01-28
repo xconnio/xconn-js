@@ -16,7 +16,7 @@ async function main() {
     process.on("SIGINT", async () => {
         console.log("SIGINT received. Cleaning up...");
         await subscription.unsubscribe();
-        await session.close();
+        await session.leave();
         process.exit(0);
     });
 }

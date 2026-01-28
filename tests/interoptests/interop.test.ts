@@ -49,7 +49,7 @@ describe("WAMP Tests", function () {
                     const result = await session.call(PROCEDURE_ADD, [2, 2]);
                     expect(result.args[0]).toBe(4);
 
-                    await session.close();
+                    await session.leave();
                 });
 
                 it(`PubSub with url: ${url}, serializer: ${serializer.constructor.name}, authenticator: ${authenticator.constructor.name}`, async function () {
@@ -66,8 +66,8 @@ describe("WAMP Tests", function () {
                     const publisher = await client.connect(url, REALM);
                     await publisher.publish("io.xconn.test", args, {}, {"acknowledge": true});
 
-                    await subscriber.close();
-                    await publisher.close();
+                    await subscriber.leave();
+                    await publisher.leave();
                 });
 
                 it(`RPC with url: ${url}, serializer: ${serializer.constructor.name}, authenticator: ${authenticator.constructor.name}`, async function () {
@@ -85,8 +85,8 @@ describe("WAMP Tests", function () {
                     const result = await caller.call("io.xconn.test", args);
                     expect(result.args).toEqual(args);
 
-                    await callee.close();
-                    await caller.close();
+                    await callee.leave();
+                    await caller.leave();
                 });
             });
         });

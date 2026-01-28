@@ -28,7 +28,7 @@ async function main() {
     const sumResult: Result = await session.call(testProcedureSum, [2, 2, 6]);
     console.log(`Sum=${sumResult.args?.[0]}`);
 
-    await session.close();
+    await session.leave();
 }
 
 main().catch((err) => {
