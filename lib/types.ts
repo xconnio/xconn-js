@@ -100,7 +100,7 @@ export class BaseSession extends IBaseSession {
 
             while (this._waiting.length > 0) {
                 const waiter = this._waiting.shift()!;
-                waiter.reject(new Error("WebSocket connection closed"));
+                waiter.reject(new SessionClosedError());
             }
 
             if (this._disconnectCallbacks.length > 0) {
@@ -313,3 +313,5 @@ export class Progress {
     ) {
     }
 }
+
+export class SessionClosedError extends Error {}
