@@ -37,6 +37,7 @@ import {
     Subscription,
     UnsubscribeRequest,
     ProgressResult,
+    SessionClosedError,
 } from "./types";
 
 
@@ -84,9 +85,19 @@ export class Session {
         this._baseSession.onDisconnect(async () => { await this.markDisconnected();});
 
         (async () => {
-            for (; ;) {
-                const message = await this._baseSession.receive();
-                await this._processIncomingMessage(this._wampSession.receive(message));
+            try {
+                for (;;) {
+                    const message = await this._baseSession.receive();
+                    await this._processIncomingMessage(
+                        this._wampSession.receive(message)
+                    );
+                }
+            } catch (err) {
+                if (err instanceof SessionClosedError) {
+                    return;
+                }
+
+                throw err;
             }
         })();
     }
