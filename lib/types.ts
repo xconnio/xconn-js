@@ -283,3 +283,11 @@ export class ProgressResult {
     }
 }
 
+export class Progress {
+    constructor(
+        public args: any[] = [],
+        public kwargs: { [key: string]: any } = {},
+        public options: { [key: string]: any } = {},
+    ) {
+    }
+}
