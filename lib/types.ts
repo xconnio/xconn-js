@@ -64,6 +64,9 @@ export class BaseSession extends IBaseSession {
     private readonly sessionDetails: SessionDetails;
     private readonly _serializer: Serializer;
     private _disconnectCallbacks: Array<(reason?: string) => Promise<void>> = [];
+    private _queue: any[] = [];
+    private _waiting: {resolve: (value: any) => void; reject: (reason?: any) => void;}[] = [];
+    private _wsClosed = false;
 
     constructor(
         ws: WebSocket,
@@ -77,8 +80,29 @@ export class BaseSession extends IBaseSession {
         this.sessionDetails = sessionDetails;
         this._serializer = serializer;
 
+        this._ws.binaryType = "arraybuffer";
+        this._ws.addEventListener("message", (event: MessageEvent) => {
+            const data = event.data instanceof ArrayBuffer
+                ? new Uint8Array(event.data)
+                : event.data;
+
+            if (this._waiting.length > 0) {
+                const waiter = this._waiting.shift()!;
+                waiter.resolve(data);
+            } else {
+                this._queue.push(data);
+            }
+        });
+
         // close cleanly on abrupt client disconnect
         this._ws.addEventListener("close", async () => {
+            this._wsClosed = true;
+
+            while (this._waiting.length > 0) {
+                const waiter = this._waiting.shift()!;
+                waiter.reject(new SessionClosedError());
+            }
+
             if (this._disconnectCallbacks.length > 0) {
                 await Promise.all(this._disconnectCallbacks.map(cb => cb()));
             }
@@ -115,18 +139,16 @@ export class BaseSession extends IBaseSession {
     }
 
     async receive(): Promise<any> {
-        return new Promise((resolve) => {
-            const messageHandler = async (event: MessageEvent) => {
-                let data = event.data;
+        if (this._wsClosed) {
+            throw new Error("Session closed");
+        }
 
-                if (event.data instanceof Blob) {
-                    data = new Uint8Array(await event.data.arrayBuffer());
-                }
-                resolve(data);
-                this._ws.removeEventListener("message", messageHandler);
-            };
+        if (this._queue.length > 0) {
+            return this._queue.shift();
+        }
 
-            this._ws.addEventListener("message", messageHandler, {once: true});
+        return new Promise((resolve, reject) => {
+            this._waiting.push({ resolve, reject });
         });
     }
 
@@ -283,3 +305,13 @@ export class ProgressResult {
     }
 }
 
+export class Progress {
+    constructor(
+        public args: any[] = [],
+        public kwargs: { [key: string]: any } = {},
+        public options: { [key: string]: any } = {},
+    ) {
+    }
+}
+
+export class SessionClosedError extends Error {}
