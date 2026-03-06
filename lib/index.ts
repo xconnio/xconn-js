@@ -18,4 +18,5 @@ export {
     CryptoSignAuthenticator,
 
     SessionDetails,
+    Joiner,
 } from "wampproto";
