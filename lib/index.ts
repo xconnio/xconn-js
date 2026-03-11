@@ -2,6 +2,7 @@ export {Client, connectAnonymous, connectTicket, connectCRA, connectCryptosign} 
 export {ApplicationError, ProtocolError} from "./exception"
 export {Session} from './session'
 export {IBaseSession, BaseSession, Result, Registration, Invocation, Subscription, Event, Progress} from "./types"
+export {getSubProtocol} from "./helpers"
 
 export {
     type Message,
