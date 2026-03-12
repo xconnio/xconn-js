@@ -1,6 +1,6 @@
 import {Joiner, ClientAuthenticator, Serializer, JSONSerializer} from 'wampproto';
 
-import {BaseSession} from './types';
+import {BaseSession, Peer, WebSocketPeer} from './types';
 import {getSubProtocol} from './helpers';
 
 
@@ -21,47 +21,44 @@ export class WAMPSessionJoiner {
     }
 
     async join(uri: string, realm: string): Promise<BaseSession> {
-        await ensureGlobalWebSocket()
+        await ensureGlobalWebSocket();
         const ws = new WebSocket(uri, [getSubProtocol(this._serializer)]);
-
-        const joiner = new Joiner(realm, this._serializer, this._authenticator);
-
-        ws.addEventListener('open', () => {
-            ws.send(joiner.sendHello());
+        await new Promise((resolve, reject) => {
+            ws.addEventListener("open", resolve);
+            ws.addEventListener("error", reject);
         });
 
-        return new Promise<BaseSession>((resolve, reject) => {
-            const wsMessageHandler = async (event: MessageEvent) => {
-                try {
-                    let data = event.data;
+        const peer = new WebSocketPeer(ws);
 
-                    if (event.data instanceof Blob) {
-                        data = new Uint8Array(await event.data.arrayBuffer());
-                    }
+        return joinPeer(peer, realm, this._serializer, this._authenticator);
+    }
+}
 
-                    const toSend = await joiner.receive(data);
-                    if (!toSend) {
-                        ws.removeEventListener('message', wsMessageHandler);
-                        ws.removeEventListener('close', closeHandler);
 
-                        const baseSession = new BaseSession(ws, wsMessageHandler, joiner.getSessionDetails(), this._serializer);
-                        resolve(baseSession);
-                    } else {
-                        ws.send(toSend);
-                    }
-                } catch (error) {
-                    reject(error);
-                }
-            };
+export async function joinPeer(
+    peer: Peer,
+    realm: string,
+    serializer: Serializer,
+    authenticator?: ClientAuthenticator
+): Promise<BaseSession> {
+    const joiner = new Joiner(realm, serializer, authenticator);
+    const hello = joiner.sendHello();
+    peer.send(hello);
 
-            const closeHandler = () => {
-                ws.removeEventListener('message', wsMessageHandler);
-                reject(new Error('Connection closed before handshake completed'));
-            };
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        const msgBytes = await peer.receive();
 
-            ws.addEventListener('message', wsMessageHandler);
-            ws.addEventListener('error', (error) => reject(error));
-            ws.addEventListener('close', closeHandler);
-        });
+        const toSend = await joiner.receive(msgBytes);
+
+        if (toSend === null) {
+            return new BaseSession(
+                peer,
+                joiner.getSessionDetails(),
+                serializer
+            );
+        }
+
+        peer.send(toSend);
     }
 }

@@ -59,71 +59,41 @@ export abstract class IBaseSession {
 }
 
 export class BaseSession extends IBaseSession {
-    private readonly _ws: WebSocket;
-    private readonly _wsMessageHandler: any;
-    private readonly sessionDetails: SessionDetails;
+    private readonly _peer: Peer;
     private readonly _serializer: Serializer;
+    private readonly _sessionDetails: SessionDetails;
+
     private _disconnectCallbacks: Array<(reason?: string) => Promise<void>> = [];
-    private _queue: any[] = [];
-    private _waiting: {resolve: (value: any) => void; reject: (reason?: any) => void;}[] = [];
-    private _wsClosed = false;
 
-    constructor(
-        ws: WebSocket,
-        wsMessageHandler: any,
-        sessionDetails: SessionDetails,
-        serializer: Serializer
-    ) {
+    constructor(peer: Peer, sessionDetails: SessionDetails, serializer: Serializer) {
         super();
-        this._ws = ws;
-        this._wsMessageHandler = wsMessageHandler;
-        this.sessionDetails = sessionDetails;
+        this._peer = peer;
         this._serializer = serializer;
+        this._sessionDetails = sessionDetails;
 
-        this._ws.binaryType = "arraybuffer";
-        this._ws.addEventListener("message", (event: MessageEvent) => {
-            const data = event.data instanceof ArrayBuffer
-                ? new Uint8Array(event.data)
-                : event.data;
-
-            if (this._waiting.length > 0) {
-                const waiter = this._waiting.shift()!;
-                waiter.resolve(data);
-            } else {
-                this._queue.push(data);
-            }
-        });
-
-        // close cleanly on abrupt client disconnect
-        this._ws.addEventListener("close", async () => {
-            this._wsClosed = true;
-
-            while (this._waiting.length > 0) {
-                const waiter = this._waiting.shift()!;
-                waiter.reject(new SessionClosedError());
-            }
-
-            if (this._disconnectCallbacks.length > 0) {
-                await Promise.all(this._disconnectCallbacks.map(cb => cb()));
-            }
-            await this.close();
-        });
+        if (peer.onDisconnect) {
+            peer.onDisconnect(async () => {
+                if (this._disconnectCallbacks.length > 0) {
+                    await Promise.all(this._disconnectCallbacks.map(cb => cb()));
+                }
+            });
+        }
     }
 
     id(): number {
-        return this.sessionDetails.sessionID;
+        return this._sessionDetails.sessionID;
     }
 
     realm(): string {
-        return this.sessionDetails.realm;
+        return this._sessionDetails.realm;
     }
 
     authid(): string {
-        return this.sessionDetails.authid;
+        return this._sessionDetails.authid;
     }
 
     authrole(): string {
-        return this.sessionDetails.authrole;
+        return this._sessionDetails.authrole;
     }
 
     serializer(): Serializer {
@@ -131,42 +101,30 @@ export class BaseSession extends IBaseSession {
     }
 
     send(data: any): void {
-        this._ws.send(data);
-    }
-
-    sendMessage(msg: Message): void {
-        this.send(this._serializer.serialize(msg));
+        this._peer.send(data);
     }
 
     async receive(): Promise<any> {
-        if (this._wsClosed) {
-            throw new Error("Session closed");
-        }
+        return this._peer.receive();
+    }
 
-        if (this._queue.length > 0) {
-            return this._queue.shift();
-        }
-
-        return new Promise((resolve, reject) => {
-            this._waiting.push({ resolve, reject });
-        });
+    sendMessage(msg: Message): void {
+        const data: string | Uint8Array = this._serializer.serialize(msg);
+        this._peer.send(data);
     }
 
     async receiveMessage(): Promise<Message> {
-        return this._serializer.deserialize(await this.receive());
+        const data = await this._peer.receive();
+
+        return this._serializer.deserialize(data);
     }
 
     async close(): Promise<void> {
-        if (this._wsMessageHandler) {
-            this._ws.removeEventListener("message", this._wsMessageHandler);
-            this._ws.removeEventListener("close", this._wsMessageHandler);
-        }
-
-        this._ws.close();
+        await this._peer.close();
     }
 
     isConnected(): boolean {
-        return this._ws.readyState === WebSocket.OPEN;
+        return this._peer.isConnected();
     }
 
     onDisconnect(callback: (reason?: string) => Promise<void>): void {
@@ -174,7 +132,7 @@ export class BaseSession extends IBaseSession {
     }
 
     getSessionDetails(): SessionDetails {
-        return this.sessionDetails;
+        return this._sessionDetails;
     }
 }
 
@@ -315,3 +273,96 @@ export class Progress {
 }
 
 export class SessionClosedError extends Error {}
+
+export interface Peer {
+    send(data: Uint8Array | string): void;
+    receive(): Promise<Uint8Array | string>;
+    close(): Promise<void>;
+    isConnected(): boolean;
+    onDisconnect?(callback: () => Promise<void>): void;
+}
+
+export class WebSocketPeer implements Peer {
+    private readonly _ws: WebSocket;
+    private _queue: (Uint8Array | string)[] = [];
+    private _waiting: {
+        resolve: (data: Uint8Array | string) => void,
+        reject: (err: Error) => void
+    }[] = [];
+
+    private _disconnectHandlers: (() => Promise<void>)[] = [];
+    private _closed = false;
+
+    constructor(ws: WebSocket) {
+        this._ws = ws;
+        this._ws.binaryType = "arraybuffer";
+        this._bindEvents();
+    }
+
+    private _bindEvents() {
+        this._ws.addEventListener("message", (event: MessageEvent) => {
+            const data = event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data;
+
+            if (this._waiting.length > 0) {
+                const waiter = this._waiting.shift()!;
+                waiter.resolve(data);
+            } else {
+                this._queue.push(data);
+            }
+
+        });
+
+        this._ws.addEventListener("close", (e) => {
+            void this._handleDisconnect();
+        });
+
+        this._ws.addEventListener("error", (e) => {
+            void this._handleDisconnect();
+        });
+    }
+
+    private async _handleDisconnect() {
+        if (this._closed) return;
+        this._closed = true;
+
+        while (this._waiting.length > 0) {
+            const waiter = this._waiting.shift();
+            waiter?.reject(new Error("WebSocket closed"));
+        }
+
+        for (const cb of this._disconnectHandlers) {
+            await cb();
+        }
+    }
+
+    onDisconnect(callback: () => Promise<void>): void {
+        this._disconnectHandlers.push(callback);
+    }
+
+    isConnected(): boolean {
+        return this._ws.readyState === WebSocket.OPEN;
+    }
+
+    send(data: Uint8Array | string): void {
+        this._ws.send(data);
+    }
+
+    async receive(): Promise<Uint8Array | string> {
+        if (this._queue.length > 0) {
+            return this._queue.shift()!;
+        }
+
+        return new Promise((resolve, reject) => {
+            this._waiting.push({ resolve, reject });
+        });
+    }
+
+    async close(): Promise<void> {
+        if (this._closed) return;
+
+        this._closed = true;
+        this._ws.close();
+
+        await this._handleDisconnect();
+    }
+}
