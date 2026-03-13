@@ -87,7 +87,7 @@ export class Session {
 
         (async () => {
             try {
-                for (;;) {
+                while (this._baseSession.isConnected()) {
                     const message = await this._baseSession.receive();
                     await this._processIncomingMessage(
                         this._wampSession.receive(message)
