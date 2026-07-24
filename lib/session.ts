@@ -46,6 +46,7 @@ export class Session {
     private _wampSession: WAMPSession;
     private _idGen: SessionScopeIDGenerator = new SessionScopeIDGenerator();
     private _disconnectCallbacks: Array<(reason?: string) => Promise<void>> = [];
+    private _disconnected = false;
 
     private _callRequests: Map<number, {
         resolve: (value: Result) => void,
@@ -98,7 +99,8 @@ export class Session {
                     return;
                 }
 
-                throw err;
+                // Transport read failed, treat it as a disconnect.
+                await this.markDisconnected(err instanceof globalThis.Error ? err.message : String(err));
             }
         })();
     }
@@ -344,6 +346,9 @@ export class Session {
     }
 
     private async markDisconnected(reason?: string) {
+        if (this._disconnected) return;
+        this._disconnected = true;
+
         if (this._disconnectCallbacks.length > 0) {
             await Promise.all(this._disconnectCallbacks.map(cb => cb(reason)));
         }
