@@ -13,8 +13,14 @@ import {Session} from './session';
 // RawSocket framing constants.
 const RAWSOCKET_MAGIC = 0x7f;
 const SERIALIZER_CBOR = 3;
-// DefaultMaxMsgSize = 1<<20 (1MB), log2=20 → byte1 = ((20-9)<<4) | SERIALIZER_CBOR = 0xB3
+// The max frame size this client declares it will accept from the server (1<<20 = 1MB).
+// Used to bound receive(); unrelated to the server's declared accept-from-client limit,
+// which is negotiated separately per-connection and bounds send() instead.
+const CLIENT_MAX_MSG_SIZE = 1 << 20;
+// log2(CLIENT_MAX_MSG_SIZE)=20 → byte1 = ((20-9)<<4) | SERIALIZER_CBOR = 0xB3
 const HANDSHAKE_BYTE1 = ((20 - 9) << 4) | SERIALIZER_CBOR;
+// RawSocket frame length is a 3-byte field; the negotiated max can't exceed what it can encode.
+const FRAME_LENGTH_LIMIT = 0xffffff;
 
 const MSG_WAMP = 0;
 const MSG_PING = 1;
@@ -25,6 +31,20 @@ function concatBytes(a: Uint8Array<ArrayBufferLike>, b: Uint8Array<ArrayBufferLi
     out.set(a);
     out.set(b, a.length);
     return out;
+}
+
+// readAtLeast reads from reader, appending to buf, until buf holds at least n bytes.
+async function readAtLeast(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    buf: Uint8Array<ArrayBuffer>,
+    n: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+    while (buf.length < n) {
+        const {value, done} = await reader.read();
+        if (done) throw new Error('WebTransport stream closed');
+        buf = concatBytes(buf, value);
+    }
+    return buf;
 }
 
 export class WebTransportPeer implements Peer {
@@ -58,11 +78,7 @@ export class WebTransportPeer implements Peer {
     }
 
     private async _readBytes(n: number): Promise<Uint8Array<ArrayBuffer>> {
-        while (this._buffer.length < n) {
-            const {value, done} = await this._reader.read();
-            if (done) throw new Error('WebTransport stream closed');
-            this._buffer = concatBytes(this._buffer, value);
-        }
+        this._buffer = await readAtLeast(this._reader, this._buffer, n);
         const result = this._buffer.slice(0, n);
         this._buffer = this._buffer.slice(n);
         return result;
@@ -73,8 +89,8 @@ export class WebTransportPeer implements Peer {
         const msgType = header[0];
         const length = (header[1] << 16) | (header[2] << 8) | header[3];
 
-        if (length > this._maxMsgSize) {
-            throw new Error(`inbound frame too large: ${length} bytes (max ${this._maxMsgSize})`);
+        if (length > CLIENT_MAX_MSG_SIZE) {
+            throw new Error(`inbound frame too large: ${length} bytes (max ${CLIENT_MAX_MSG_SIZE})`);
         }
 
         const payload = length > 0 ? await this._readBytes(length) : new Uint8Array(0);
@@ -177,12 +193,7 @@ async function openStreamPeer(wt: WebTransport): Promise<WebTransportPeer> {
     try {
         await writer.write(new Uint8Array([RAWSOCKET_MAGIC, HANDSHAKE_BYTE1, 0x00, 0x00]));
 
-        let buf: Uint8Array<ArrayBuffer> = new Uint8Array(0);
-        while (buf.length < 4) {
-            const {value, done} = await reader.read();
-            if (done) throw new Error('stream closed during WebTransport handshake');
-            buf = concatBytes(buf, value);
-        }
+        const buf = await readAtLeast(reader, new Uint8Array(0), 4);
         const header = buf.slice(0, 4);
         const remainder = buf.slice(4);
 
@@ -204,8 +215,9 @@ async function openStreamPeer(wt: WebTransport): Promise<WebTransportPeer> {
             throw new Error(`handshake: server selected serializer ${header[1] & 0x0F}, expected CBOR (${SERIALIZER_CBOR})`);
         }
 
-        // Decode the server-negotiated max message size from the high nibble.
-        const maxMsgSize = 1 << (9 + (header[1] >> 4));
+        // Decode the server-negotiated max message size from the high nibble, clamped to what
+        // the 3-byte RawSocket frame length field can encode (a raw Lexp=15 shift overflows it).
+        const maxMsgSize = Math.min(1 << (9 + (header[1] >> 4)), FRAME_LENGTH_LIMIT);
 
         return new WebTransportPeer(writer, reader, remainder, maxMsgSize);
     } catch (e) {
@@ -250,18 +262,27 @@ async function openWebTransport(url: string, certHashes?: WebTransportCertHash[]
     return wt;
 }
 
+async function connect(
+    url: string,
+    realm: string,
+    authenticator: ClientAuthenticator | undefined,
+    certHashes: WebTransportCertHash[] | undefined,
+): Promise<WebTransportSession> {
+    const wt = await openWebTransport(url, certHashes);
+    try {
+        return await createWebTransportSession(wt, realm, authenticator);
+    } catch (e) {
+        wt.close();
+        throw e;
+    }
+}
+
 export async function connectWebTransport(
     url: string,
     realm: string,
     certHashes?: WebTransportCertHash[],
 ): Promise<WebTransportSession> {
-    const wt = await openWebTransport(url, certHashes);
-    try {
-        return await createWebTransportSession(wt, realm);
-    } catch (e) {
-        wt.close();
-        throw e;
-    }
+    return connect(url, realm, undefined, certHashes);
 }
 
 export async function connectWebTransportAnonymous(
@@ -270,13 +291,7 @@ export async function connectWebTransportAnonymous(
     authid: string,
     certHashes?: WebTransportCertHash[],
 ): Promise<WebTransportSession> {
-    const wt = await openWebTransport(url, certHashes);
-    try {
-        return await createWebTransportSession(wt, realm, new AnonymousAuthenticator(authid, {}));
-    } catch (e) {
-        wt.close();
-        throw e;
-    }
+    return connect(url, realm, new AnonymousAuthenticator(authid, {}), certHashes);
 }
 
 export async function connectWebTransportCRA(
@@ -286,13 +301,7 @@ export async function connectWebTransportCRA(
     secret: string,
     certHashes?: WebTransportCertHash[],
 ): Promise<WebTransportSession> {
-    const wt = await openWebTransport(url, certHashes);
-    try {
-        return await createWebTransportSession(wt, realm, new WAMPCRAAuthenticator(authid, secret, null));
-    } catch (e) {
-        wt.close();
-        throw e;
-    }
+    return connect(url, realm, new WAMPCRAAuthenticator(authid, secret, null), certHashes);
 }
 
 export async function connectWebTransportCryptosign(
@@ -302,11 +311,5 @@ export async function connectWebTransportCryptosign(
     privateKey: string,
     certHashes?: WebTransportCertHash[],
 ): Promise<WebTransportSession> {
-    const wt = await openWebTransport(url, certHashes);
-    try {
-        return await createWebTransportSession(wt, realm, new CryptoSignAuthenticator(authid, privateKey, {}));
-    } catch (e) {
-        wt.close();
-        throw e;
-    }
+    return connect(url, realm, new CryptoSignAuthenticator(authid, privateKey, {}), certHashes);
 }
