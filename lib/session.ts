@@ -117,6 +117,10 @@ export class Session {
         return this._baseSession.getSessionDetails();
     }
 
+    id(): number {
+        return this._baseSession.id();
+    }
+
     async leave(): Promise<void> {
         const goodbye = new Goodbye(new GoodbyeFields({}, CLOSE_CLOSE_REALM));
         const data = this._wampSession.sendMessage(goodbye);
