@@ -282,6 +282,41 @@ export interface Peer {
     onDisconnect?(callback: () => Promise<void>): void;
 }
 
+// DisconnectHandlers runs registered onDisconnect callbacks exactly once, guarding
+// against concurrent/duplicate disconnect triggers (e.g. an explicit close() racing
+// a transport-level close/error event). Shared by all Peer implementations.
+export class DisconnectHandlers {
+    private _handlers: (() => Promise<void>)[] = [];
+    private _fired = false;
+
+    get fired(): boolean {
+        return this._fired;
+    }
+
+    add(callback: () => Promise<void>): void {
+        this._handlers.push(callback);
+    }
+
+    // fire runs `before` (peer-specific cleanup) then all registered handlers, but only
+    // the first time it's called. The guard is set synchronously, before any await, so
+    // a concurrent call made before the first `await` inside `before` still sees `fired`.
+    // A throwing `before` is swallowed so registered handlers still get notified — this
+    // is the one chance they get, since `fired` is already latched.
+    async fire(before?: () => void | Promise<void>): Promise<void> {
+        if (this._fired) return;
+        this._fired = true;
+        if (before) {
+            try {
+                await before();
+            } catch (_) { /* ignore: still notify handlers below */
+            }
+        }
+        for (const cb of this._handlers) {
+            await cb();
+        }
+    }
+}
+
 export class WebSocketPeer implements Peer {
     private readonly _ws: WebSocket;
     private _queue: (Uint8Array | string)[] = [];
@@ -290,8 +325,7 @@ export class WebSocketPeer implements Peer {
         reject: (err: Error) => void
     }[] = [];
 
-    private _disconnectHandlers: (() => Promise<void>)[] = [];
-    private _closed = false;
+    private readonly _disconnect = new DisconnectHandlers();
 
     constructor(ws: WebSocket) {
         this._ws = ws;
@@ -322,21 +356,16 @@ export class WebSocketPeer implements Peer {
     }
 
     private async _handleDisconnect() {
-        if (this._closed) return;
-        this._closed = true;
-
-        while (this._waiting.length > 0) {
-            const waiter = this._waiting.shift();
-            waiter?.reject(new Error("WebSocket closed"));
-        }
-
-        for (const cb of this._disconnectHandlers) {
-            await cb();
-        }
+        await this._disconnect.fire(() => {
+            while (this._waiting.length > 0) {
+                const waiter = this._waiting.shift();
+                waiter?.reject(new Error("WebSocket closed"));
+            }
+        });
     }
 
     onDisconnect(callback: () => Promise<void>): void {
-        this._disconnectHandlers.push(callback);
+        this._disconnect.add(callback);
     }
 
     isConnected(): boolean {
@@ -358,11 +387,8 @@ export class WebSocketPeer implements Peer {
     }
 
     async close(): Promise<void> {
-        if (this._closed) return;
-
-        this._closed = true;
+        if (this._disconnect.fired) return;
         this._ws.close();
-
         await this._handleDisconnect();
     }
 }

@@ -6,7 +6,7 @@ import {
     WAMPCRAAuthenticator,
 } from 'wampproto';
 
-import {IBaseSession, Peer} from './types';
+import {DisconnectHandlers, IBaseSession, Peer} from './types';
 import {joinPeer} from './joiner';
 import {Session} from './session';
 
@@ -17,8 +17,7 @@ const SERIALIZER_CBOR = 3;
 // Used to bound receive(); unrelated to the server's declared accept-from-client limit,
 // which is negotiated separately per-connection and bounds send() instead.
 const CLIENT_MAX_MSG_SIZE = 1 << 20;
-// log2(CLIENT_MAX_MSG_SIZE)=20 → byte1 = ((20-9)<<4) | SERIALIZER_CBOR = 0xB3
-const HANDSHAKE_BYTE1 = ((20 - 9) << 4) | SERIALIZER_CBOR;
+const HANDSHAKE_BYTE1 = ((Math.log2(CLIENT_MAX_MSG_SIZE) - 9) << 4) | SERIALIZER_CBOR;
 // RawSocket frame length is a 3-byte field; the negotiated max can't exceed what it can encode.
 const FRAME_LENGTH_LIMIT = 0xffffff;
 
@@ -49,8 +48,7 @@ async function readAtLeast(
 
 export class WebTransportPeer implements Peer {
     private _buffer: Uint8Array<ArrayBuffer>;
-    private _connected = true;
-    private _disconnectHandlers: (() => Promise<void>)[] = [];
+    private readonly _disconnect = new DisconnectHandlers();
 
     constructor(
         private readonly _writer: WritableStreamDefaultWriter<Uint8Array>,
@@ -65,43 +63,52 @@ export class WebTransportPeer implements Peer {
             .catch(() => this._handleDisconnect());
     }
 
-    private async _runDisconnectHandlers(): Promise<void> {
-        for (const cb of this._disconnectHandlers) {
-            await cb();
-        }
-    }
-
+    // _handleDisconnect fires disconnect handlers, whether triggered by an explicit
+    // close(), a read/write failure, or the stream closing from the other end — always
+    // via the same cleanup path so the writer/reader are released exactly once either way.
     private async _handleDisconnect(): Promise<void> {
-        if (!this._connected) return;
-        this._connected = false; // synchronous guard before first await
-        await this._runDisconnectHandlers();
+        await this._disconnect.fire(async () => {
+            try {
+                await this._writer.close();
+            } catch (_) { /* ignore */
+            }
+            try {
+                await this._reader.cancel();
+            } catch (_) { /* ignore */
+            }
+        });
     }
 
     private async _readBytes(n: number): Promise<Uint8Array<ArrayBuffer>> {
         this._buffer = await readAtLeast(this._reader, this._buffer, n);
         const result = this._buffer.slice(0, n);
-        this._buffer = this._buffer.slice(n);
+        this._buffer = this._buffer.subarray(n) as Uint8Array<ArrayBuffer>;
         return result;
     }
 
     async receive(): Promise<Uint8Array> {
-        const header = await this._readBytes(4);
-        const msgType = header[0];
-        const length = (header[1] << 16) | (header[2] << 8) | header[3];
+        try {
+            const header = await this._readBytes(4);
+            const msgType = header[0];
+            const length = (header[1] << 16) | (header[2] << 8) | header[3];
 
-        if (length > CLIENT_MAX_MSG_SIZE) {
-            throw new Error(`inbound frame too large: ${length} bytes (max ${CLIENT_MAX_MSG_SIZE})`);
+            if (length > CLIENT_MAX_MSG_SIZE) {
+                throw new Error(`inbound frame too large: ${length} bytes (max ${CLIENT_MAX_MSG_SIZE})`);
+            }
+
+            const payload = length > 0 ? await this._readBytes(length) : new Uint8Array(0);
+
+            if (msgType === MSG_WAMP) return payload;
+            if (msgType === MSG_PING) {
+                await this._writeFrame(MSG_PONG, payload);
+                return this.receive();
+            }
+            if (msgType === MSG_PONG) return this.receive();
+            throw new Error(`unknown rawsocket message type: ${msgType}`);
+        } catch (e) {
+            await this._handleDisconnect();
+            throw e;
         }
-
-        const payload = length > 0 ? await this._readBytes(length) : new Uint8Array(0);
-
-        if (msgType === MSG_WAMP) return payload;
-        if (msgType === MSG_PING) {
-            await this._writeFrame(MSG_PONG, payload);
-            return this.receive();
-        }
-        if (msgType === MSG_PONG) return this.receive();
-        throw new Error(`unknown rawsocket message type: ${msgType}`);
     }
 
     send(data: Uint8Array | string): void {
@@ -124,25 +131,15 @@ export class WebTransportPeer implements Peer {
 
     // close closes only this stream — the underlying WebTransport connection stays open.
     async close(): Promise<void> {
-        if (!this._connected) return;
-        this._connected = false; // synchronous guard before first await, prevents double-close races
-        try {
-            await this._writer.close();
-        } catch (_) { /* ignore */
-        }
-        try {
-            await this._reader.cancel();
-        } catch (_) { /* ignore */
-        }
-        await this._runDisconnectHandlers();
+        await this._handleDisconnect();
     }
 
     isConnected(): boolean {
-        return this._connected;
+        return !this._disconnect.fired;
     }
 
     onDisconnect(callback: () => Promise<void>): void {
-        this._disconnectHandlers.push(callback);
+        this._disconnect.add(callback);
     }
 }
 
@@ -154,7 +151,11 @@ export interface WebTransportCertHash {
 // WebTransportSession wraps a Session and exposes the underlying WebTransport connection
 // for opening additional WAMP sessions and raw bidirectional streams on the same connection.
 export class WebTransportSession extends Session {
-    constructor(base: IBaseSession, private readonly _wt: WebTransport) {
+    constructor(
+        base: IBaseSession,
+        private readonly _wt: WebTransport,
+        private readonly _ownsConnection: boolean = true,
+    ) {
         super(base);
     }
 
@@ -163,18 +164,23 @@ export class WebTransportSession extends Session {
         return this._wt;
     }
 
-    // close sends a WAMP Goodbye and then shuts down the entire WebTransport connection.
-    // Use this when the session owns the connection (i.e. it was created by connectWebTransport*).
-    // For sessions opened via openSession() use leave() instead.
+    // close sends a WAMP Goodbye on this session's stream. If this session owns the
+    // connection (i.e. it was created by connectWebTransport*, not by openSession()),
+    // it also shuts down the entire WebTransport connection, even if leave() throws.
     async close(): Promise<void> {
-        await this.leave();
-        this._wt.close();
+        try {
+            await this.leave();
+        } finally {
+            if (this._ownsConnection) this._wt.close();
+        }
     }
 
     // openSession opens an additional WAMP session on the same WebTransport connection.
     // Each call opens a new stream and performs a fresh WAMP Hello/Welcome exchange.
+    // The returned session does not own the connection: its close()/leave() only end
+    // its own stream, leaving the connection open for the rest of its sessions.
     async openSession(realm: string, authenticator?: ClientAuthenticator): Promise<WebTransportSession> {
-        return createWebTransportSession(this._wt, realm, authenticator);
+        return createWebTransportSession(this._wt, realm, authenticator, false);
     }
 
     // openStream opens a raw (non-WAMP) bidirectional stream on the WebTransport connection.
@@ -239,11 +245,12 @@ async function createWebTransportSession(
     wt: WebTransport,
     realm: string,
     authenticator?: ClientAuthenticator,
+    ownsConnection = true,
 ): Promise<WebTransportSession> {
     const peer = await openStreamPeer(wt);
     try {
         const base = await joinPeer(peer, realm, new CBORSerializer(), authenticator);
-        return new WebTransportSession(base, wt);
+        return new WebTransportSession(base, wt, ownsConnection);
     } catch (e) {
         await peer.close().catch(() => {
         });
