@@ -164,12 +164,12 @@ export class WebTransportSession extends Session {
         return this._wt;
     }
 
-    // close sends a WAMP Goodbye on this session's stream. If this session owns the
+    // leave sends a WAMP Goodbye on this session's stream. If this session owns the
     // connection (i.e. it was created by connectWebTransport*, not by openSession()),
-    // it also shuts down the entire WebTransport connection, even if leave() throws.
-    async close(): Promise<void> {
+    // it also shuts down the entire WebTransport connection, even if the Goodbye fails.
+    async leave(): Promise<void> {
         try {
-            await this.leave();
+            await super.leave();
         } finally {
             if (this._ownsConnection) this._wt.close();
         }
@@ -177,8 +177,8 @@ export class WebTransportSession extends Session {
 
     // openSession opens an additional WAMP session on the same WebTransport connection.
     // Each call opens a new stream and performs a fresh WAMP Hello/Welcome exchange.
-    // The returned session does not own the connection: its close()/leave() only end
-    // its own stream, leaving the connection open for the rest of its sessions.
+    // The returned session does not own the connection: its leave() only ends its own
+    // stream, leaving the connection open for the rest of its sessions.
     async openSession(realm: string, authenticator?: ClientAuthenticator): Promise<WebTransportSession> {
         return createWebTransportSession(this._wt, realm, authenticator, false);
     }
