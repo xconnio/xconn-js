@@ -13,13 +13,15 @@ import {Session} from './session';
 // RawSocket framing constants.
 const RAWSOCKET_MAGIC = 0x7f;
 const SERIALIZER_CBOR = 3;
-// The max frame size this client declares it will accept from the server (1<<20 = 1MB).
-// Used to bound receive(); unrelated to the server's declared accept-from-client limit,
-// which is negotiated separately per-connection and bounds send() instead.
-const CLIENT_MAX_MSG_SIZE = 1 << 20;
-const HANDSHAKE_BYTE1 = ((Math.log2(CLIENT_MAX_MSG_SIZE) - 9) << 4) | SERIALIZER_CBOR;
-// RawSocket frame length is a 3-byte field; the negotiated max can't exceed what it can encode.
+// RawSocket frame length is a 3-byte field, so no frame can ever exceed this regardless
+// of what either side declares during the handshake.
 const FRAME_LENGTH_LIMIT = 0xffffff;
+// The handshake's Lexp field is a 4-bit power-of-2 exponent (accept up to 2^(9+Lexp)), not
+// a literal byte count. 15 is its largest representable value, declaring willingness to
+// accept anything up to FRAME_LENGTH_LIMIT above — the true wire-format ceiling, rather
+// than settling for 1<<23 = 8MB, the largest *power of 2* that fits under it.
+const CLIENT_MAX_MSG_LEXP = 15;
+const HANDSHAKE_BYTE1 = (CLIENT_MAX_MSG_LEXP << 4) | SERIALIZER_CBOR;
 
 const MSG_WAMP = 0;
 const MSG_PING = 1;
@@ -90,11 +92,9 @@ export class WebTransportPeer implements Peer {
         try {
             const header = await this._readBytes(4);
             const msgType = header[0];
+            // A 3-byte big-endian value, so this can never exceed FRAME_LENGTH_LIMIT —
+            // no separate bounds check needed now that Lexp=15 declares the full range.
             const length = (header[1] << 16) | (header[2] << 8) | header[3];
-
-            if (length > CLIENT_MAX_MSG_SIZE) {
-                throw new Error(`inbound frame too large: ${length} bytes (max ${CLIENT_MAX_MSG_SIZE})`);
-            }
 
             const payload = length > 0 ? await this._readBytes(length) : new Uint8Array(0);
 
